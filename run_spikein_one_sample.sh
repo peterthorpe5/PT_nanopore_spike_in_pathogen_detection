@@ -32,16 +32,28 @@ REAL_FASTQ="${REAL_FASTQ:-}"
 # You can point this to a single FASTA file (recommended).
 # Example:
 # HOST_REF_FASTA="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/host.fasta"
+
+MONKEY=/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/M.nemestrina_tonkeana_nigra.fasta
+PLASMO=/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz
+
 HOST_REF_FASTA="${HOST_REF_FASTA:-}"
 
+MONKEY="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/M.nemestrina_tonkeana_nigra.fasta"
+PLASMO="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz"
+
+HOST_REF_FASTA="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/host_plus_plasmo_depletion.fasta"
+
+cat "${MONKEY}" > "${HOST_REF_FASTA}"
+gzip -cd "${PLASMO}" >> "${HOST_REF_FASTA}"
+
 # Pathogen genome FASTA (spike source)
-PATHOGEN_FASTA="${PATHOGEN_FASTA:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/genomes/GCF_000524495.1_Plas_inui_San_Antonio_1_V1_genomic.fasta}"
+PATHOGEN_FASTA="${PATHOGEN_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/GCA_014843685.1_ASM1484368v1_genomic.fna}"
 
 # Minimap detection reference (your hard-masked plas/outgroup/bait database)
 MINIMAP_DB_GZ="${MINIMAP_DB_GZ:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz}"
 
 # Kraken2 DB directory
-KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/kracken}"
+KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 
 # Output directory for this run
 OUT_DIR="${OUT_DIR:-spikein_pilot_out}"
