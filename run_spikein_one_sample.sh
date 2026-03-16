@@ -33,7 +33,7 @@ REAL_FASTQ="${REAL_FASTQ:-}"
 # Example:
 # HOST_REF_FASTA="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/host.fasta"
 
-MONKEY=/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/M.nemestrina_tonkeana_nigra.fasta
+MONKEY=/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/M.nemestrina_tonkeana_nigra.fasta
 PLASMO=/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz
 
 HOST_REF_FASTA="${HOST_REF_FASTA:-}"
