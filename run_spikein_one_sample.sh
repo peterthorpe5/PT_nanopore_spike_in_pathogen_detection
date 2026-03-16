@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+#$ -cwd
+#$ -V
+#$ -pe smp 12
+#$ -l mfree=300G
+#$ -l h_vmem=300G
+#$ -N SENS_kraken_test
 set -euo pipefail
 
 # run_spikein_one_sample.sh
