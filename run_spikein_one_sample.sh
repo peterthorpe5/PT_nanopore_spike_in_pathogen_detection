@@ -149,8 +149,8 @@ if [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
   # Map to host; keep only unmapped reads (-f 4).
   # For ONT, map-ont preset is appropriate.
   # Produce gzipped fastq.
-  minimap2 -t "${THREADS}" -ax map-ont "${HOST_REF_FASTA}" "${REAL_FASTQ}" \
-    | samtools view -b -f 4 -@ "${THREADS}" - \
+  minimap2 -t "${THREADS}" -a -x map-ont "${HOST_REF_FASTA}" "${REAL_FASTQ}" \
+    | samtools view -h -T "${HOST_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
     | samtools fastq -@ "${THREADS}" - \
     | gzip -c > "${WORK_FASTQ}"
 

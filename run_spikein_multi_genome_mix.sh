@@ -177,10 +177,10 @@ WORK_FASTQ="${OUT_DIR}/background.fastq.gz"
 if [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
   echo "[INFO] Host/background depletion enabled"
 
-  minimap2 -t "${THREADS}" -ax map-ont "${HOST_REF_FASTA}" "${REAL_FASTQ}" \
-    | samtools view -b -f 4 -@ "${THREADS}" - \
-    | samtools fastq -@ "${THREADS}" - \
-    | gzip -c > "${WORK_FASTQ}"
+  minimap2 -t "${THREADS}" -a -x map-ont "${HOST_REF_FASTA}" "${REAL_FASTQ}" \
+  | samtools view -h -T "${HOST_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
+  | samtools fastq -@ "${THREADS}" - \
+  | gzip -c > "${WORK_FASTQ}"
 else
   echo "[INFO] Host/background depletion disabled; using REAL_FASTQ directly"
   ln -sf "${REAL_FASTQ}" "${WORK_FASTQ}"
