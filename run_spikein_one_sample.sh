@@ -25,8 +25,10 @@ set -euo pipefail
 ###############################################################################
 
 # Background FASTQ (real sample). Example:
-# REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz"
+REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz"
 REAL_FASTQ="${REAL_FASTQ:-}"
+
+echo "${REAL_FASTQ:-}"
 
 # Host reference FASTA (for optional host depletion AND NanoSim profiling).
 # You can point this to a single FASTA file (recommended).
@@ -44,6 +46,9 @@ gzip -cd "${PLASMO}" >> "${HOST_REF_FASTA}"
 
 # Pathogen genome FASTA (spike source)
 PATHOGEN_FASTA="${PATHOGEN_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/GCA_014843685.1_ASM1484368v1_genomic.fna}"
+
+echo "${PATHOGEN_FASTA}"
+
 
 # Minimap detection reference (your hard-masked plas/outgroup/bait database)
 MINIMAP_DB_GZ="${MINIMAP_DB_GZ:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz}"
