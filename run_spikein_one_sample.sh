@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
+#$ -j y
 #$ -cwd
 #$ -V
 #$ -pe smp 12
-#$ -l mfree=300G
-#$ -l h_vmem=300G
+#$ -jc long
+#$ -mods l_hard mfree 300G
+#$ -adds l_hard h_vmem 300G
+
+
 #$ -N SENS_kraken_test
 set -euo pipefail
 
