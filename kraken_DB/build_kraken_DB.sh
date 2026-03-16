@@ -14,6 +14,7 @@ set -euo pipefail
 
 WORKDIR="/home/pthorpe001/data/project_back_up_2024/kracken"
 DB="kraken_bact_virus_plasmo_fungal"
+KRAKEN2_DB_NAME="kraken_bact_virus_plasmo_fungal"
 
 THREADS="${NSLOTS:-16}"
 
@@ -27,7 +28,7 @@ REFSEQ_SUMMARY="${META_DIR}/assembly_summary_refseq.txt"
 
 # Optional cap to keep DB smaller (and reduce RAM for classification)
 # Leave empty to disable.
-MAX_DB_SIZE="${MAX_DB_SIZE:-30G}"
+#MAX_DB_SIZE="${MAX_DB_SIZE:-80G}"
 
 # Manual taxid assignments for genomes without GCA/GCF in filename or not found.
 MANUAL_TSV="${WORKDIR}/manual_taxid.tsv"
@@ -36,15 +37,17 @@ MANUAL_TSV="${WORKDIR}/manual_taxid.tsv"
 # Activate environment
 ###############################################################################
 
+
+
 cd "${WORKDIR}"
 
 # Adjust to your cluster's conda initialisation if needed
-if [[ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]]; then
-  # Common install location
-  source "${HOME}/miniconda3/etc/profile.d/conda.sh"
-elif [[ -f "${HOME}/conda/etc/profile.d/conda.sh" ]]; then
-  source "${HOME}/conda/etc/profile.d/conda.sh"
-fi
+#if [[ -f "${HOME}/miniconda3/etc/profile.d/conda.sh" ]]; then
+#  # Common install location
+#  source "${HOME}/miniconda3/etc/profile.d/conda.sh"
+#elif [[ -f "${HOME}/conda/etc/profile.d/conda.sh" ]]; then
+#  source "${HOME}/conda/etc/profile.d/conda.sh"
+#fi
 
 conda activate kraken2
 
@@ -77,16 +80,107 @@ kraken2-build --download-library fungi       --db "${DB}" --threads "${THREADS}"
 kraken2-build --download-library protozoa    --db "${DB}" --threads "${THREADS}" --use-ftp
 kraken2-build --download-library UniVec_Core --db "${DB}" --threads "${THREADS}" --use-ftp
 
+
+#rsync -avP kraken_bact_virus_plasmo_fungal/ \
+#   pthorpe001@login.compute.dundee.ac.uk:/home/pthorpe001/data/project_back_up_2024/kracken/https_genomes/
+
 ###############################################################################
 # Fetch assembly summary files (for mapping GCA/GCF -> taxid)
 ###############################################################################
 
-echo "[INFO] Downloading NCBI assembly summaries"
-curl -L -A "Mozilla/5.0" -o "${REFSEQ_SUMMARY}" \
-  https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt
+#echo "[INFO] Downloading NCBI assembly summaries"
+#curl -L -A "Mozilla/5.0" -o "${REFSEQ_SUMMARY}" \
+#  https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt
 
-curl -L -A "Mozilla/5.0" -o "${GENBANK_SUMMARY}" \
-  https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt
+#curl -L -A "Mozilla/5.0" -o "${GENBANK_SUMMARY}" \
+#  https://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt
+
+  # get viral genomes from RefSeq (since many are missing from GenBank)
+  awk -F $'\t' '
+    BEGIN{OFS="\t"}
+    $0 ~ /^#/ {next}
+    $25 == "viral" && $20 != "na" {print $20}
+  ' ncbi_metadata/assembly_summary_refseq.txt > viral_ftp_paths.txt
+
+
+DB="kraken_bact_virus_plasmo_fungal"
+
+for f in viral_genomes/*.fna.gz
+do
+  kraken2-build --add-to-library "${f}" --db "${DB}"
+done
+
+
+# for bacteria
+awk -F $'\t' '
+  $0 ~ /^#/ {next}
+  $25 == "bacteria" && $20 != "na" {print $20}
+' ncbi_metadata/assembly_summary_refseq.txt > bacteria_ftp_paths.txt
+
+wc -l bacteria_ftp_paths.txt
+head -n 5 bacteria_ftp_paths.txt
+
+awk -F $'\t' '
+  $0 ~ /^#/ {next}
+  $25 == "bacteria" && $12 == "Complete Genome" && $20 != "na" {print $20}
+' ncbi_metadata/assembly_summary_refseq.txt > bacteria_complete_ftp_paths.txt
+
+wc -l bacteria_complete_ftp_paths.txt
+head -n 5 bacteria_complete_ftp_paths.txt
+
+
+mkdir -p bacteria_genomes
+
+cat bacteria_complete_ftp_paths.txt \
+  | awk '{base=$0; sub(".*/","",base); print $0 "/" base "_genomic.fna.gz\tbacteria_genomes/" base "_genomic.fna.gz"}' \
+  | xargs -P 6 -n 1 bash -c '
+      url=$(echo "$0" | cut -f1)
+      out=$(echo "$0" | cut -f2)
+      if [[ -s "$out" ]]; then exit 0; fi
+      echo "[INFO] $url"
+      curl -L --retry 5 --retry-delay 2 --connect-timeout 20 -o "${out}.tmp" "$url" && mv "${out}.tmp" "$out"
+    '
+
+DB="kraken_bact_virus_plasmo_fungal"
+
+for f in bacteria_genomes/*.fna.gz
+do
+  kraken2-build --add-to-library "${f}" --db "${DB}"
+done
+
+
+
+
+awk -F $'\t' '
+  $0 ~ /^#/ {next}
+  $25 == "protozoa" && $12 == "Complete Genome" && $8 ~ /^Plasmodium / && $20 != "na" {print $20}
+' ncbi_metadata/assembly_summary_refseq.txt > plasmodium_complete_paths.txt
+
+wc -l plasmodium_complete_paths.txt
+head -n 10 plasmodium_complete_paths.txt
+
+awk -F $'\t' '
+  $0 ~ /^#/ {next}
+  $25 == "protozoa" && $8 ~ /^Plasmodium / && $20 != "na" {print $20}
+' ncbi_metadata/assembly_summary_refseq.txt > plasmodium_paths.txt
+
+
+mkdir -p plasmodium_genomes
+
+while IFS= read -r base_url
+do
+  base=$(basename "${base_url}")
+  url="${base_url}/${base}_genomic.fna.gz"
+  out="plasmodium_genomes/${base}_genomic.fna.gz"
+
+  if [[ -s "${out}" ]]; then
+    continue
+  fi
+
+  echo "[INFO] ${url}"
+  curl -L --retry 5 --retry-delay 2 --connect-timeout 20 \
+    -o "${out}.tmp" "${url}" && mv "${out}.tmp" "${out}"
+done < plasmodium_complete_paths.txt
 
 echo "[INFO] Checking assembly summary headers"
 head -n 2 "${GENBANK_SUMMARY}" | sed 's/\t/ /g' | head -n 2
@@ -148,8 +242,7 @@ echo -n "  missing_assembly total:" ; cat "${WORKDIR}/all_plasmodium_genome_to_t
 if [[ ! -f "${MANUAL_TSV}" ]]; then
   cat > "${MANUAL_TSV}" <<'EOF'
 genome_file	taxid	species
-# Example:
-# /home/pthorpe001/data/project_back_up_2024/kracken/genomes/HepatitusA.fasta	12092	Hepatovirus A
+/home/pthorpe001/data/project_back_up_2024/kracken/genomes/HepatitusA.fasta	12092	Hepatovirus A
 EOF
 fi
 
@@ -166,16 +259,101 @@ sort -u "${WORKDIR}/custom_genomes_file_taxid.tsv" -o "${WORKDIR}/custom_genomes
 # Add custom genomes to Kraken DB
 ###############################################################################
 
-echo "[INFO] Adding custom genomes to library with explicit taxid"
+# De-duplicate exact duplicate lines first
+sort -u "${WORKDIR}/custom_genomes_file_taxid.tsv" \
+  -o "${WORKDIR}/custom_genomes_file_taxid.tsv"
+
+# Keep a full copy
+cp "${WORKDIR}/custom_genomes_file_taxid.tsv" \
+  "${WORKDIR}/custom_genomes_file_taxid_all.tsv"
+
+# Keep one representative per taxid
+awk -F $'\t' '!seen[$2]++' "${WORKDIR}/custom_genomes_file_taxid.tsv" \
+  > "${WORKDIR}/custom_genomes_file_taxid_representatives.tsv"
+
+# Replace original with representative-only version
+mv "${WORKDIR}/custom_genomes_file_taxid_representatives.tsv" \
+   "${WORKDIR}/custom_genomes_file_taxid.tsv"
+
+###############################################################################
+# Add custom genomes to Kraken DB
+###############################################################################
+echo "[INFO] DB=${DB}"
+echo "[INFO] WORKDIR=${WORKDIR}"
+echo "[INFO] pwd=$(pwd)"
+DB=/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal
+WORKDIR=/home/pthorpe001/data/project_back_up_2024/kracken
+pwd=/home/pthorpe001/data/project_back_up_2024/kracken
+
+
+set -euo pipefail
+
+input_tsv="${WORKDIR}/custom_genomes_file_taxid.tsv"
+clean_tsv="${WORKDIR}/custom_genomes_file_taxid.clean.tsv"
+tagged_dir="${WORKDIR}/kraken_tagged_fastas"
+
+mkdir -p "${tagged_dir}"
+
+awk -F $'\t' '
+  NF == 2 && $2 ~ /^[0-9]+$/ && $1 !~ /\/\._/ {
+    print $1 "\t" $2
+  }
+' "${input_tsv}" > "${clean_tsv}"
+
+echo "[INFO] Cleaned TSV written to ${clean_tsv}"
+
+
+
 while IFS=$'\t' read -r genome_file taxid
 do
-  if [[ ! -f "${genome_file}" ]]; then
-    echo "[WARN] Missing file, skipping: ${genome_file}"
+  if [[ "${genome_file}" != /* ]]; then
+    genome_path="${WORKDIR}/${genome_file}"
+  else
+    genome_path="${genome_file}"
+  fi
+
+  if [[ ! -f "${genome_path}" ]]; then
+    echo "[WARN] Missing file, skipping: ${genome_path}"
     continue
   fi
-  echo "[INFO] add-to-library: ${genome_file} taxid=${taxid}"
-  kraken2-build --add-to-library "${genome_file}" --db "${DB}" --taxid "${taxid}"
-done < "${WORKDIR}/custom_genomes_file_taxid.tsv"
+
+  base_name="$(basename "${genome_path}")"
+  base_name="${base_name%.gz}"
+  output_fasta="${tagged_dir}/${base_name}"
+
+  echo "[INFO] Rewriting headers: ${genome_path} taxid=${taxid}"
+
+  if [[ "${genome_path}" == *.gz ]]; then
+    gzip -cd "${genome_path}" | \
+    awk -v taxid="${taxid}" '
+      /^>/ {
+        sub(/^>/, "")
+        print ">kraken:taxid|" taxid "|" $0
+        next
+      }
+      {
+        print
+      }
+    ' > "${output_fasta}"
+  else
+    awk -v taxid="${taxid}" '
+      /^>/ {
+        sub(/^>/, "")
+        print ">kraken:taxid|" taxid "|" $0
+        next
+      }
+      {
+        print
+      }
+    ' "${genome_path}" > "${output_fasta}"
+  fi
+
+  echo "[INFO] add-to-library: ${output_fasta}"
+  kraken2-build --add-to-library "${output_fasta}" --db "${DB}"
+done < "${clean_tsv}"
+
+
+
 
 ###############################################################################
 # Build DB

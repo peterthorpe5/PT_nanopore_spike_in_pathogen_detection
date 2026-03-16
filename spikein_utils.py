@@ -221,8 +221,9 @@ def summarise_kraken_report(
     by splitting on whitespace.
 
     We return:
-      - classified reads (sum of reads assigned to any taxon)
-      - target reads (sum of reads in lines whose name contains target_label)
+      - classified reads
+      - target reads (reads assigned directly to rows whose name contains
+        target_label)
 
     Parameters
     ----------
@@ -236,7 +237,8 @@ def summarise_kraken_report(
     tuple
         (classified_reads, target_reads)
     """
-    classified_reads = 0
+    total_reads = None
+    unclassified_reads = 0
     target_reads = 0
     target_label_lower = target_label.lower()
 
@@ -245,24 +247,37 @@ def summarise_kraken_report(
             line = line.rstrip("\n")
             if not line:
                 continue
+
             parts = line.split()
             if len(parts) < 6:
                 continue
 
-            # Kraken2 report fields:
-            # 0: pct, 1: clade_reads, 2: taxon_reads, 3: rank, 4: taxid, 5+: name
             try:
+                clade_reads = int(parts[1])
                 taxon_reads = int(parts[2])
             except ValueError:
                 continue
 
-            name = " ".join(parts[5:])
-            classified_reads += taxon_reads
+            rank = parts[3]
+            name = " ".join(parts[5:]).strip()
+
+            if rank == "R" and name.lower() == "root":
+                total_reads = clade_reads
+
+            if rank == "U":
+                unclassified_reads = clade_reads
 
             if target_label_lower in name.lower():
                 target_reads += taxon_reads
 
+    if total_reads is None:
+        raise ValueError(
+            f"Could not determine total reads from Kraken report: {kraken_report_tsv}"
+        )
+
+    classified_reads = total_reads - unclassified_reads
     return classified_reads, target_reads
+
 
 
 def summarise_kraken_cli(args: argparse.Namespace) -> None:

@@ -86,7 +86,15 @@ mkdir -p "${OUT_DIR}"
 
 python3 - <<'PY'
 import shutil
-req = ["minimap2", "samtools", "gzip"]
+req = [
+    "minimap2",
+    "samtools",
+    "gzip",
+    "kraken2",
+    "bamToBed",
+    "read_analysis.py",
+    "simulator.py",
+]
 missing = [r for r in req if shutil.which(r) is None]
 if missing:
     raise SystemExit(f"ERROR: missing executables on PATH: {missing}")
@@ -209,7 +217,13 @@ gzip -cd "${MINIMAP_DB_GZ}" > "${MINIMAP_DB_FASTA}"
 SUMMARY_TSV="${OUT_DIR}/spikein_summary.tsv"
 echo -e "replicate\tspike_n\tmixed_fastq_gz\tkraken_report\tkraken_classified_reads\tkraken_target_reads\tminimap_bam\tminimap_target_alignments" > "${SUMMARY_TSV}"
 
-TARGET_LABEL="$(python3 "${UTILS_PY}" guess-label --fasta "${PATHOGEN_FASTA}")"
+
+TARGET_LABEL="${TARGET_LABEL:-}"
+
+if [[ -z "${TARGET_LABEL}" ]]; then
+  TARGET_LABEL="$(python3 "${UTILS_PY}" guess-label --fasta "${PATHOGEN_FASTA}")"
+fi
+
 echo "[INFO] Target label guess (used for parsing): ${TARGET_LABEL}"
 echo "[INFO] Summary TSV: ${SUMMARY_TSV}"
 
@@ -225,11 +239,15 @@ for rep in $(seq 1 "${REPLICATES}"); do
     echo "[INFO] rep=${rep} spike_n=${spike_n}"
 
     # Sample spike_n reads from simulated pool
+    SPIKE_SEED=$(( rep * 100000 + spike_n ))
+
     python3 "${UTILS_PY}" sample-fastq \
       --fastq_gz "${SIM_POOL_FASTQ_GZ}" \
       --n_reads "${spike_n}" \
-      --seed "${rep}" \
+      --seed "${SPIKE_SEED}" \
       --out_fastq_gz "${SPIKE_FASTQ_GZ}"
+
+
 
     # Concatenate real + simulated
     cat "${WORK_FASTQ}" "${SPIKE_FASTQ_GZ}" > "${MIX_FASTQ_GZ}"
@@ -264,12 +282,14 @@ for rep in $(seq 1 "${REPLICATES}"); do
     BAM_OUT="${MIX_DIR}/minimap_sorted_nodup.bam"
     BED_OUT="${MIX_DIR}/minimap_sorted_nodup.MASKED.bed"
 
+
     minimap2 -t "${THREADS}" -ax map-ont "${MINIMAP_DB_FASTA}" "${MIX_FASTQ_GZ}" \
-      | samtools view -e "length(seq) > ${MIN_ALIGN_LEN}" -Sh -q "${MIN_MAPQ}" - \
+      | samtools view -Sh -q "${MIN_MAPQ}" -e "rlen >= ${MIN_ALIGN_LEN}" - \
       | samtools sort -O bam -@ "${THREADS}" - \
-      | samtools rmdup -s - - \
       | tee "${BAM_OUT}" \
       | bamToBed > "${BED_OUT}"
+
+
 
     # Count alignments that hit the target contigs/species label
     MINIMAP_TARGET_ALN="$(python3 "${UTILS_PY}" count-minimap-target \
