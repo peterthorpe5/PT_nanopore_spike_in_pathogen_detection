@@ -25,7 +25,7 @@ set -euo pipefail
 ###############################################################################
 
 # Background FASTQ (real sample). Example:
-# REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC0123_AmM001WB.fastq.gz"
+# REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz"
 REAL_FASTQ="${REAL_FASTQ:-}"
 
 # Host reference FASTA (for optional host depletion AND NanoSim profiling).
