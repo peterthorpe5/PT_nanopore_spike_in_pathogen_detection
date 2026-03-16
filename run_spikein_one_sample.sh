@@ -127,6 +127,7 @@ PY
 # Helper paths
 ###############################################################################
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR=~/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection/
 UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
 
 if [[ ! -f "${UTILS_PY}" ]]; then
