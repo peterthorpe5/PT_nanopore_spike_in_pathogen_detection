@@ -20,6 +20,29 @@ default_repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-${default_repo_dir}}"
 PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"
 
+if [[ -n "${REPO_DIR:-}" ]]; then
+    REPO_DIR="${REPO_DIR}"
+elif [[ -n "${SGE_O_WORKDIR:-}" ]]; then
+    REPO_DIR="${SGE_O_WORKDIR}"
+else
+    REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"
+fi
+
+PY_DIR="${REPO_DIR}/scripts"
+CONFIG_DIR="${REPO_DIR}/configs"
+
+PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
+
+
+SHUFFLE_FASTA_PY="${PY_DIR}/shuffle_fasta.py"
+SAMPLE_FASTQ_PY="${PY_DIR}/sample_fastq.py"
+BUILD_MIXED_FASTQ_PY="${PY_DIR}/build_mixed_fastq.py"
+COMBINE_NANOSIM_FASTQ_PY="${PY_DIR}/combine_nanosim_fastq.py"
+SUMMARISE_KRAKEN_PY="${PY_DIR}/summarise_kraken_report.py"
+COUNT_BED_HITS_PY="${PY_DIR}/count_bed_hits.py"
+DEDUP_FASTQ_NAMES_PY="${PY_DIR}/dedup_fastq_names.py"
+ASSEMBLY_STATS_PY="${PY_DIR}/assembly_stats.py"
+
 REAL_FASTQ="${REAL_FASTQ:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
 MONKEY_SMALL_GZ="${MONKEY_SMALL_GZ:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/genome/GCF_000956065.1_Mnem_1.0_genomic.fna.gz}"
 MONKEY_SMALL_FASTA="${MONKEY_SMALL_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/genome/GCF_000956065.1_Mnem_1.0_genomic.fna}"
