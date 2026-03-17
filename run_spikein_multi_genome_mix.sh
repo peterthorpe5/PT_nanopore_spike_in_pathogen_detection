@@ -263,10 +263,11 @@ for i in "${!PATHOGEN_FASTA_ARR[@]}"; do
     --model_prefix "${NS_MODEL_PREFIX}" \
     --output "${sim_prefix}" \
     --number "${SIM_POOL_N}" \
-    --dna_type linear \
+    -dna_type linear \
     --seed "$((42 + genome_idx))" \
     --num_threads "${THREADS}" \
     --fastq
+
 
   python3 "${UTILS_PY}" combine-nanosim-fastq \
     --sim_prefix "${sim_prefix}" \
