@@ -64,7 +64,7 @@ for line in "${PANEL_LINES[@]}"; do
   sim_prefix="${OUT_DIR}/simulated_pathogen_${GENOME_INDEX}"
   sim_pool_fastq="${OUT_DIR}/sim_pool_${GENOME_INDEX}.fastq"
   sim_pool_fastq_gz="${OUT_DIR}/sim_pool_${GENOME_INDEX}.fastq.gz"
-  simulator.py genome --ref_g "${pathogen_fasta}" --model_prefix "${NS_MODEL_PREFIX}" --output "${sim_prefix}" --number "${SIM_POOL_N}" --dna_type linear --seed "$((40 + GENOME_INDEX))" --num_threads "${THREADS}" --fastq
+  simulator.py genome --ref_g "${pathogen_fasta}" --model_prefix "${NS_MODEL_PREFIX}" --output "${sim_prefix}" --number "${SIM_POOL_N}" -dna_type linear --seed "$((40 + GENOME_INDEX))" --num_threads "${THREADS}" --fastq
   python3 "${COMBINE_NANOSIM_FASTQ_PY}" --sim_prefix "${sim_prefix}" --out_fastq "${sim_pool_fastq}"
   gzip -c "${sim_pool_fastq}" > "${sim_pool_fastq_gz}"
 done
