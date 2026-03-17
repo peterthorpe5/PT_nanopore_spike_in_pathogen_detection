@@ -9,7 +9,6 @@
 #$ -N SENS_multi_kraken_multi
 
 
-
 set -euo pipefail
 
 # run_spikein_multi_genome_equal_v2.sh
