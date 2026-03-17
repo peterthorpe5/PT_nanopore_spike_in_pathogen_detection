@@ -7,87 +7,63 @@
 #$ -mods l_hard mfree 300G
 #$ -adds l_hard h_vmem 300G
 
+#$ -N SENS_kraken_test_v2
 
-#$ -N SENS_kraken_test
 set -euo pipefail
 
-# run_spikein_one_sample.sh
+# run_spikein_one_sample_v2.sh
 #
-# One-sample, one-pathogen spike-in pilot:
-# - optional host depletion
-# - NanoSim training on a subsample
-# - simulate ONT-like reads from pathogen genome
-# - spike-in series, Kraken2 + minimap2 detection, TSV summary
+# One-sample, one-pathogen ONT spike-in pipeline.
 #
-# Requirements:
-#   minimap2, samtools, gzip, python3
-#   NanoSim: read_analysis.py and simulator.py on PATH in the active conda env
-#   seqkit strongly recommended (for sampling); if not present we fall back to python sampling
-#   bedtools (bamToBed) for your minimap method output bed
+# Updated logic:
+#   1. Train NanoSim on reads from the original real FASTQ
+#      using a smaller monkey reference
+#   2. Simulate ONT-like reads from one target pathogen genome
+#   3. Perform host/background depletion once and cache the result
+#   4. Spike simulated pathogen reads into the depleted background
+#   5. Run Kraken2 and minimap2
+#   6. Write a TSV summary
 #
-# Notes:
-#   - Outputs are TSV, not comma-separated.
-#   - Designed for ONT fastq.gz.
-#   - Uses NanoSim "genome" mode with --fastq to model qualities. See NanoSim docs. :contentReference[oaicite:2]{index=2}
+# Notes
+# -----
+# - NanoSim training is done on the original FASTQ, not the depleted FASTQ.
+# - Host/background depletion is done once and reused if the output exists.
+# - Outputs are TSV, not comma-separated.
 
 ###############################################################################
-# User inputs (edit these or pass via env vars)
+# User inputs
 ###############################################################################
 
-# Background FASTQ (real sample). Example:
-REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz"
-REAL_FASTQ="${REAL_FASTQ:-}"
+REAL_FASTQ="${REAL_FASTQ:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
 
-echo "${REAL_FASTQ:-}"
+MONKEY_SMALL_GZ="${MONKEY_SMALL_GZ:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/genome/GCF_000956065.1_Mnem_1.0_genomic.fna.gz}"
+MONKEY_SMALL_FASTA="${MONKEY_SMALL_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/genome/GCF_000956065.1_Mnem_1.0_genomic.fna}"
 
-# Host reference FASTA (for optional host depletion AND NanoSim profiling).
-# You can point this to a single FASTA file (recommended).
-# Example:
-# HOST_REF_FASTA="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/host.fasta"
+MONKEY_DEPLETION_FASTA="${MONKEY_DEPLETION_FASTA:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/M.nemestrina_tonkeana_nigra.fasta}"
+PLASMO_MASKED_GZ="${PLASMO_MASKED_GZ:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz}"
 
-MONKEY=/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/M.nemestrina_tonkeana_nigra.fasta
+DEPLETION_REF_FASTA="${DEPLETION_REF_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/host_plus_plasmo_depletion.fasta}"
 
-PLASMO="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz"
-
-HOST_REF_FASTA="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/host_plus_plasmo_depletion.fasta"
-
-cat "${MONKEY}" > "${HOST_REF_FASTA}"
-gzip -cd "${PLASMO}" >> "${HOST_REF_FASTA}"
-
-# Pathogen genome FASTA (spike source)
 PATHOGEN_FASTA="${PATHOGEN_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/GCA_014843685.1_ASM1484368v1_genomic.fna}"
+TARGET_LABEL="${TARGET_LABEL:-Plasmodium vivax}"
 
-echo "${PATHOGEN_FASTA}"
-
-
-# Minimap detection reference (your hard-masked plas/outgroup/bait database)
 MINIMAP_DB_GZ="${MINIMAP_DB_GZ:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz}"
-
-# Kraken2 DB directory
 KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 
-# Output directory for this run
+SCRIPT_DIR="${SCRIPT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection}"
+UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
+
 OUT_DIR="${OUT_DIR:-spikein_pilot_out}"
 
-# Threads
+# Cached depleted background. This lets later runs reuse the expensive depletion.
+DEPLETED_FASTQ="${DEPLETED_FASTQ:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/MRC1023_AmM008WB.depleted.fastq.gz}"
+
 THREADS="${THREADS:-12}"
-
-# Spike levels: absolute number of simulated reads added
 SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"
-
-# Replicates per spike level (different seeds)
 REPLICATES="${REPLICATES:-3}"
-
-# Host depletion toggle: "true" or "false"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
-
-# NanoSim training: number of reads to sample from background for training
 TRAIN_READS_N="${TRAIN_READS_N:-200000}"
-
-# NanoSim simulation: size of the simulated pool from pathogen
 SIM_POOL_N="${SIM_POOL_N:-20000}"
-
-# Minimap detection thresholds (matching your earlier pipeline)
 MIN_ALIGN_LEN="${MIN_ALIGN_LEN:-500}"
 MIN_MAPQ="${MIN_MAPQ:-15}"
 
@@ -95,20 +71,54 @@ MIN_MAPQ="${MIN_MAPQ:-15}"
 # Checks
 ###############################################################################
 
-if [[ -z "${REAL_FASTQ}" ]]; then
-  echo "ERROR: REAL_FASTQ is not set. Export REAL_FASTQ=/path/to/sample.fastq.gz"
-  exit 1
-fi
-
-if [[ "${DO_HOST_DEPLETION}" == "true" && -z "${HOST_REF_FASTA}" ]]; then
-  echo "ERROR: DO_HOST_DEPLETION=true but HOST_REF_FASTA is not set."
-  exit 1
-fi
-
 mkdir -p "${OUT_DIR}"
+mkdir -p "$(dirname "${MONKEY_SMALL_FASTA}")"
+mkdir -p "$(dirname "${DEPLETION_REF_FASTA}")"
+mkdir -p "$(dirname "${DEPLETED_FASTQ}")"
+
+if [[ ! -f "${REAL_FASTQ}" ]]; then
+  echo "ERROR: REAL_FASTQ not found: ${REAL_FASTQ}"
+  exit 1
+fi
+
+if [[ ! -f "${MONKEY_SMALL_GZ}" && ! -f "${MONKEY_SMALL_FASTA}" ]]; then
+  echo "ERROR: neither MONKEY_SMALL_GZ nor MONKEY_SMALL_FASTA exists."
+  exit 1
+fi
+
+if [[ ! -f "${MONKEY_DEPLETION_FASTA}" ]]; then
+  echo "ERROR: MONKEY_DEPLETION_FASTA not found: ${MONKEY_DEPLETION_FASTA}"
+  exit 1
+fi
+
+if [[ ! -f "${PLASMO_MASKED_GZ}" ]]; then
+  echo "ERROR: PLASMO_MASKED_GZ not found: ${PLASMO_MASKED_GZ}"
+  exit 1
+fi
+
+if [[ ! -f "${PATHOGEN_FASTA}" ]]; then
+  echo "ERROR: PATHOGEN_FASTA not found: ${PATHOGEN_FASTA}"
+  exit 1
+fi
+
+if [[ ! -f "${MINIMAP_DB_GZ}" ]]; then
+  echo "ERROR: MINIMAP_DB_GZ not found: ${MINIMAP_DB_GZ}"
+  exit 1
+fi
+
+if [[ ! -d "${KRAKEN_DB_DIR}" ]]; then
+  echo "ERROR: KRAKEN_DB_DIR not found: ${KRAKEN_DB_DIR}"
+  exit 1
+fi
+
+if [[ ! -f "${UTILS_PY}" ]]; then
+  echo "ERROR: expected utility script not found: ${UTILS_PY}"
+  exit 1
+fi
 
 python3 - <<'PY'
 import shutil
+
 req = [
     "minimap2",
     "samtools",
@@ -124,79 +134,75 @@ if missing:
 PY
 
 ###############################################################################
-# Helper paths
-###############################################################################
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_DIR=~/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection/
-UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
-
-if [[ ! -f "${UTILS_PY}" ]]; then
-  echo "ERROR: expected ${UTILS_PY} next to this script"
-  exit 1
-fi
-
-###############################################################################
-# Step A: (Optional) host depletion
+# Report configuration
 ###############################################################################
 
-WORK_FASTQ="${OUT_DIR}/background.fastq.gz"
+echo "[INFO] REAL_FASTQ=${REAL_FASTQ}"
+echo "[INFO] MONKEY_SMALL_GZ=${MONKEY_SMALL_GZ}"
+echo "[INFO] MONKEY_SMALL_FASTA=${MONKEY_SMALL_FASTA}"
+echo "[INFO] MONKEY_DEPLETION_FASTA=${MONKEY_DEPLETION_FASTA}"
+echo "[INFO] PLASMO_MASKED_GZ=${PLASMO_MASKED_GZ}"
+echo "[INFO] DEPLETION_REF_FASTA=${DEPLETION_REF_FASTA}"
+echo "[INFO] PATHOGEN_FASTA=${PATHOGEN_FASTA}"
+echo "[INFO] TARGET_LABEL=${TARGET_LABEL}"
+echo "[INFO] DEPLETED_FASTQ=${DEPLETED_FASTQ}"
+echo "[INFO] OUT_DIR=${OUT_DIR}"
 
-if [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
-  echo "[INFO] Host depletion enabled"
-  echo "[INFO] Background input: ${REAL_FASTQ}"
-  echo "[INFO] Host reference:   ${HOST_REF_FASTA}"
+###############################################################################
+# Prepare smaller monkey FASTA for NanoSim training
+###############################################################################
 
-  # Map to host; keep only unmapped reads (-f 4).
-  # For ONT, map-ont preset is appropriate.
-  # Produce gzipped fastq.
-  minimap2 -t "${THREADS}" -a -x map-ont "${HOST_REF_FASTA}" "${REAL_FASTQ}" \
-    | samtools view -h -T "${HOST_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
-    | samtools fastq -@ "${THREADS}" - \
-    | gzip -c > "${WORK_FASTQ}"
-
+if [[ ! -s "${MONKEY_SMALL_FASTA}" ]]; then
+  echo "[INFO] Decompressing smaller monkey FASTA for NanoSim training"
+  gzip -cd "${MONKEY_SMALL_GZ}" > "${MONKEY_SMALL_FASTA}"
 else
-  echo "[INFO] Host depletion disabled; using REAL_FASTQ directly"
-  ln -sf "${REAL_FASTQ}" "${WORK_FASTQ}"
+  echo "[INFO] Reusing existing smaller monkey FASTA: ${MONKEY_SMALL_FASTA}"
 fi
 
 ###############################################################################
-# Step B: subsample reads for NanoSim training
+# Build combined depletion reference
+###############################################################################
+
+if [[ ! -s "${DEPLETION_REF_FASTA}" ]]; then
+  echo "[INFO] Building depletion reference: ${DEPLETION_REF_FASTA}"
+  cat "${MONKEY_DEPLETION_FASTA}" > "${DEPLETION_REF_FASTA}"
+  gzip -cd "${PLASMO_MASKED_GZ}" >> "${DEPLETION_REF_FASTA}"
+else
+  echo "[INFO] Reusing existing depletion reference: ${DEPLETION_REF_FASTA}"
+fi
+
+###############################################################################
+# Step A: NanoSim training subsample from original real FASTQ
 ###############################################################################
 
 TRAIN_FASTQ="${OUT_DIR}/train_${TRAIN_READS_N}.fastq.gz"
 
-echo "[INFO] Creating training subsample: ${TRAIN_FASTQ}"
-
+echo "[INFO] Creating NanoSim training subsample from original FASTQ"
 python3 "${UTILS_PY}" sample-fastq \
-  --fastq_gz "${WORK_FASTQ}" \
+  --fastq_gz "${REAL_FASTQ}" \
   --n_reads "${TRAIN_READS_N}" \
   --seed 1 \
   --out_fastq_gz "${TRAIN_FASTQ}"
 
 ###############################################################################
-# Step C: NanoSim characterisation (genome mode, model base qualities)
+# Step B: NanoSim training on original reads against smaller monkey reference
 ###############################################################################
 
 NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"
 
-if [[ -n "${HOST_REF_FASTA}" ]]; then
-  echo "[INFO] Running NanoSim read_analysis.py genome"
-  echo "[INFO] Model prefix: ${NS_MODEL_PREFIX}"
+echo "[INFO] Running NanoSim read_analysis.py genome"
+echo "[INFO] Training reads: ${TRAIN_FASTQ}"
+echo "[INFO] Training reference: ${MONKEY_SMALL_FASTA}"
 
-  # NanoSim genome mode; --fastq models base qualities. :contentReference[oaicite:3]{index=3}
-  read_analysis.py genome \
-    --read "${TRAIN_FASTQ}" \
-    --ref_g "${HOST_REF_FASTA}" \
-    --output "${NS_MODEL_PREFIX}" \
-    --num_threads "${THREADS}" \
-    --fastq
-else
-  echo "ERROR: HOST_REF_FASTA is required for NanoSim genome-mode training."
-  exit 1
-fi
+read_analysis.py genome \
+  --read "${TRAIN_FASTQ}" \
+  --ref_g "${MONKEY_SMALL_FASTA}" \
+  --output "${NS_MODEL_PREFIX}" \
+  --num_threads "${THREADS}" \
+  --fastq
 
 ###############################################################################
-# Step D: Simulate a pathogen read pool using NanoSim simulator.py (fastq output)
+# Step C: simulate pathogen read pool
 ###############################################################################
 
 SIM_POOL_FASTQ="${OUT_DIR}/sim_pool.fastq"
@@ -204,9 +210,8 @@ SIM_POOL_FASTQ_GZ="${OUT_DIR}/sim_pool.fastq.gz"
 
 echo "[INFO] Simulating pathogen pool with NanoSim"
 echo "[INFO] Pathogen genome: ${PATHOGEN_FASTA}"
-echo "[INFO] Pool size:       ${SIM_POOL_N}"
+echo "[INFO] Pool size: ${SIM_POOL_N}"
 
-# NanoSim simulator genome mode; --fastq emits FASTQ. :contentReference[oaicite:4]{index=4}
 simulator.py genome \
   --ref_g "${PATHOGEN_FASTA}" \
   --model_prefix "${NS_MODEL_PREFIX}" \
@@ -217,8 +222,6 @@ simulator.py genome \
   --num_threads "${THREADS}" \
   --fastq
 
-# NanoSim writes multiple files depending on aligned/unaligned categories in some versions.
-# We combine any produced fastq into one pool.
 python3 "${UTILS_PY}" combine-nanosim-fastq \
   --sim_prefix "${OUT_DIR}/simulated_pathogen" \
   --out_fastq "${SIM_POOL_FASTQ}"
@@ -226,29 +229,44 @@ python3 "${UTILS_PY}" combine-nanosim-fastq \
 gzip -c "${SIM_POOL_FASTQ}" > "${SIM_POOL_FASTQ_GZ}"
 
 ###############################################################################
-# Step E: Prepare minimap reference (decompress once)
+# Step D: host/background depletion once, then reuse
+###############################################################################
+
+WORK_FASTQ="${DEPLETED_FASTQ}"
+
+if [[ -s "${WORK_FASTQ}" ]]; then
+  echo "[INFO] Reusing existing depleted background: ${WORK_FASTQ}"
+elif [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
+  echo "[INFO] Running host/background depletion"
+  minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" \
+    | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
+    | samtools fastq -@ "${THREADS}" - \
+    | gzip -c > "${WORK_FASTQ}"
+else
+  echo "[INFO] Host depletion disabled; using REAL_FASTQ directly"
+  ln -sf "${REAL_FASTQ}" "${WORK_FASTQ}"
+fi
+
+###############################################################################
+# Step E: prepare minimap reference
 ###############################################################################
 
 MINIMAP_DB_FASTA="${OUT_DIR}/plas_outgrps_genomes_Hard_MASKED.fasta"
 
-echo "[INFO] Decompressing minimap DB once to: ${MINIMAP_DB_FASTA}"
-gzip -cd "${MINIMAP_DB_GZ}" > "${MINIMAP_DB_FASTA}"
+if [[ ! -s "${MINIMAP_DB_FASTA}" ]]; then
+  echo "[INFO] Decompressing minimap reference to: ${MINIMAP_DB_FASTA}"
+  gzip -cd "${MINIMAP_DB_GZ}" > "${MINIMAP_DB_FASTA}"
+else
+  echo "[INFO] Reusing existing minimap reference: ${MINIMAP_DB_FASTA}"
+fi
 
 ###############################################################################
-# Step F: Run spike series
+# Step F: spike series
 ###############################################################################
 
 SUMMARY_TSV="${OUT_DIR}/spikein_summary.tsv"
 echo -e "replicate\tspike_n\tmixed_fastq_gz\tkraken_report\tkraken_classified_reads\tkraken_target_reads\tminimap_bam\tminimap_target_alignments" > "${SUMMARY_TSV}"
 
-
-TARGET_LABEL="${TARGET_LABEL:-}"
-
-if [[ -z "${TARGET_LABEL}" ]]; then
-  TARGET_LABEL="$(python3 "${UTILS_PY}" guess-label --fasta "${PATHOGEN_FASTA}")"
-fi
-
-echo "[INFO] Target label guess (used for parsing): ${TARGET_LABEL}"
 echo "[INFO] Summary TSV: ${SUMMARY_TSV}"
 
 for rep in $(seq 1 "${REPLICATES}"); do
@@ -262,7 +280,6 @@ for rep in $(seq 1 "${REPLICATES}"); do
 
     echo "[INFO] rep=${rep} spike_n=${spike_n}"
 
-    # Sample spike_n reads from simulated pool
     SPIKE_SEED=$(( rep * 100000 + spike_n ))
 
     python3 "${UTILS_PY}" sample-fastq \
@@ -271,14 +288,12 @@ for rep in $(seq 1 "${REPLICATES}"); do
       --seed "${SPIKE_SEED}" \
       --out_fastq_gz "${SPIKE_FASTQ_GZ}"
 
-
-
-    # Concatenate real + simulated
     cat "${WORK_FASTQ}" "${SPIKE_FASTQ_GZ}" > "${MIX_FASTQ_GZ}"
 
     ###########################################################################
     # Kraken2
     ###########################################################################
+
     KRAKEN_REPORT="${MIX_DIR}/kraken.report.tsv"
     KRAKEN_OUT="${MIX_DIR}/kraken.classifications.tsv"
 
@@ -290,7 +305,6 @@ for rep in $(seq 1 "${REPLICATES}"); do
       "${MIX_FASTQ_GZ}" \
       >/dev/null
 
-    # Summarise Kraken2
     KRAKEN_SUM_TSV="${MIX_DIR}/kraken.summary.tsv"
     python3 "${UTILS_PY}" summarise-kraken \
       --kraken_report_tsv "${KRAKEN_REPORT}" \
@@ -301,11 +315,11 @@ for rep in $(seq 1 "${REPLICATES}"); do
     K_TARGET="$(awk 'NR==2{print $3}' "${KRAKEN_SUM_TSV}")"
 
     ###########################################################################
-    # Minimap detection pipeline (your method, parameterised)
+    # Minimap2
     ###########################################################################
-    BAM_OUT="${MIX_DIR}/minimap_sorted_nodup.bam"
-    BED_OUT="${MIX_DIR}/minimap_sorted_nodup.MASKED.bed"
 
+    BAM_OUT="${MIX_DIR}/minimap_sorted.bam"
+    BED_OUT="${MIX_DIR}/minimap_sorted.MASKED.bed"
 
     minimap2 -t "${THREADS}" -ax map-ont "${MINIMAP_DB_FASTA}" "${MIX_FASTQ_GZ}" \
       | samtools view -Sh -q "${MIN_MAPQ}" -e "rlen >= ${MIN_ALIGN_LEN}" - \
@@ -313,16 +327,12 @@ for rep in $(seq 1 "${REPLICATES}"); do
       | tee "${BAM_OUT}" \
       | bamToBed > "${BED_OUT}"
 
-
-
-    # Count alignments that hit the target contigs/species label
     MINIMAP_TARGET_ALN="$(python3 "${UTILS_PY}" count-minimap-target \
       --bed "${BED_OUT}" \
       --target_label "${TARGET_LABEL}")"
 
     echo -e "${rep}\t${spike_n}\t${MIX_FASTQ_GZ}\t${KRAKEN_REPORT}\t${K_CLASSIFIED}\t${K_TARGET}\t${BAM_OUT}\t${MINIMAP_TARGET_ALN}" \
       >> "${SUMMARY_TSV}"
-
   done
 done
 
