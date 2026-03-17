@@ -12,22 +12,27 @@ set -euo pipefail
 
 # run_spikein_shuffled_control.sh
 #
-# Negative control for the single-genome spike-in workflow.
+# Self-contained shuffled negative-control ONT spike-in pipeline.
 #
-# Strategy:
-#   1. Shuffle each pathogen contig independently (mononucleotide shuffle)
-#   2. Simulate ONT-like reads from the shuffled reference using the same
-#      NanoSim model as the real-pathogen workflow
-#   3. Run the standard one-sample spike-in pipeline using the shuffled FASTA
+# Workflow:
+#   1. Sample training reads from the original real FASTQ
+#   2. Train NanoSim on those reads against the smaller monkey reference
+#   3. Create a mononucleotide-shuffled pathogen FASTA
+#   4. Simulate ONT-like reads from the shuffled FASTA
+#   5. Reuse or create depleted background FASTQ
+#   6. Spike shuffled reads into background across a series of spike levels
+#   7. Run Kraken2 and minimap2 for each mixture
+#   8. Write a TSV summary
 #
 # Notes:
-#   - Headers in the shuffled FASTA are deliberately shortened to reduce the
-#     risk of very long downstream read names.
-#   - The script performs gzip integrity checks and writes provenance metadata.
-#   - The main pipeline is expected to be run_spikein_one_sample.sh.
+#   - This script does not call any other shell script.
+#   - It uses spikein_utils.py for helper functions already used elsewhere.
+#   - It builds mixed FASTQ safely by decompressing and recompressing once.
+#   - It writes short shuffled contig names to reduce the risk of oversized
+#     downstream read headers.
 
 ###############################################################################
-# User-configurable inputs
+# User inputs
 ###############################################################################
 
 REAL_FASTQ="${REAL_FASTQ:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
@@ -47,8 +52,8 @@ TARGET_LABEL="${TARGET_LABEL:-Plasmodium vivax}"
 MINIMAP_DB_GZ="${MINIMAP_DB_GZ:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz}"
 KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 
-SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-MAIN_SCRIPT="${MAIN_SCRIPT:-${SCRIPT_DIR}/run_spikein_one_sample.sh}"
+SCRIPT_DIR="${SCRIPT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection}"
+UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
 
 OUT_DIR="${OUT_DIR:-spikein_shuffled_control_out}"
 THREADS="${THREADS:-12}"
@@ -57,6 +62,9 @@ SIM_POOL_N="${SIM_POOL_N:-20000}"
 SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"
 REPLICATES="${REPLICATES:-3}"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
+
+MIN_MAPQ="${MIN_MAPQ:-15}"
+MIN_ALIGN_LEN="${MIN_ALIGN_LEN:-500}"
 
 SHUFFLE_SEED="${SHUFFLE_SEED:-123}"
 SHUFFLE_MODE="${SHUFFLE_MODE:-mononucleotide}"
@@ -109,6 +117,22 @@ gzip_test_if_gz() {
     fi
 }
 
+make_mixed_fastq_gz() {
+    local background_fastq_gz="$1"
+    local spike_fastq_gz="$2"
+    local out_fastq_gz="$3"
+    local tmp_fastq="${out_fastq_gz%.gz}"
+
+    gzip -t "${background_fastq_gz}"
+    gzip -t "${spike_fastq_gz}"
+
+    gzip -cd "${background_fastq_gz}" > "${tmp_fastq}"
+    gzip -cd "${spike_fastq_gz}" >> "${tmp_fastq}"
+    gzip -c "${tmp_fastq}" > "${out_fastq_gz}"
+    gzip -t "${out_fastq_gz}"
+    rm -f "${tmp_fastq}"
+}
+
 ###############################################################################
 # Checks
 ###############################################################################
@@ -120,7 +144,7 @@ require_file "${PATHOGEN_FASTA}"
 require_file "${MONKEY_DEPLETION_FASTA}"
 require_file "${PLASMO_MASKED_GZ}"
 require_file "${MINIMAP_DB_GZ}"
-require_file "${MAIN_SCRIPT}"
+require_file "${UTILS_PY}"
 require_dir "${KRAKEN_DB_DIR}"
 
 if [[ ! -f "${MONKEY_SMALL_GZ}" && ! -f "${MONKEY_SMALL_FASTA}" ]]; then
@@ -130,7 +154,12 @@ fi
 
 require_exe python3
 require_exe gzip
-require_exe bash
+require_exe minimap2
+require_exe samtools
+require_exe kraken2
+require_exe bamToBed
+require_exe read_analysis.py
+require_exe simulator.py
 
 gzip_test_if_gz "${REAL_FASTQ}"
 gzip_test_if_gz "${PATHOGEN_FASTA}"
@@ -141,22 +170,78 @@ if [[ -f "${MONKEY_SMALL_GZ}" ]]; then
 fi
 
 ###############################################################################
-# Output paths
+# Paths
 ###############################################################################
+
+TRAIN_FASTQ="${OUT_DIR}/train_reads.fastq.gz"
+NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"
 
 SHUFFLED_FASTA="${OUT_DIR}/pathogen.shuffled.fasta"
 SHUFFLE_META_TSV="${OUT_DIR}/shuffle_metadata.tsv"
+
+SIM_PREFIX="${OUT_DIR}/simulated_pathogen"
+SIM_POOL_FASTQ="${OUT_DIR}/sim_pool.fastq"
+SIM_POOL_FASTQ_GZ="${OUT_DIR}/sim_pool.fastq.gz"
+
+MINIMAP_DB_FASTA="${OUT_DIR}/plas_outgrps_genomes_Hard_MASKED.fasta"
+
+SUMMARY_TSV="${OUT_DIR}/spikein_summary.tsv"
 RUN_META_TSV="${OUT_DIR}/run_metadata.tsv"
-RUN_LOG="${OUT_DIR}/shuffle_control_run.log"
+
+WORK_FASTQ="${DEPLETED_FASTQ}"
 
 ###############################################################################
-# Create shuffled FASTA
+# Step A: create NanoSim training subsample
+###############################################################################
+
+log_info "Creating NanoSim training subsample from original FASTQ"
+python3 "${UTILS_PY}" sample-fastq \
+    --fastq_gz "${REAL_FASTQ}" \
+    --n_reads "${TRAIN_READS_N}" \
+    --seed 1 \
+    --out_fastq_gz "${TRAIN_FASTQ}"
+
+gzip -t "${TRAIN_FASTQ}"
+
+###############################################################################
+# Step B: prepare smaller monkey reference if needed
+###############################################################################
+
+if [[ ! -s "${MONKEY_SMALL_FASTA}" ]]; then
+    if [[ -s "${MONKEY_SMALL_GZ}" ]]; then
+        log_info "Decompressing smaller monkey reference"
+        gzip -cd "${MONKEY_SMALL_GZ}" > "${MONKEY_SMALL_FASTA}"
+    else
+        log_error "Smaller monkey FASTA not found and no gzipped source available"
+        exit 1
+    fi
+else
+    log_info "Reusing existing smaller monkey FASTA: ${MONKEY_SMALL_FASTA}"
+fi
+
+###############################################################################
+# Step C: NanoSim training
+###############################################################################
+
+log_info "Running NanoSim read_analysis.py genome"
+log_info "Training reads: ${TRAIN_FASTQ}"
+log_info "Training reference: ${MONKEY_SMALL_FASTA}"
+
+read_analysis.py genome \
+    --read "${TRAIN_FASTQ}" \
+    --ref_g "${MONKEY_SMALL_FASTA}" \
+    --output "${NS_MODEL_PREFIX}" \
+    --num_threads "${THREADS}" \
+    --fastq
+
+###############################################################################
+# Step D: create shuffled FASTA
 ###############################################################################
 
 log_info "Creating shuffled pathogen FASTA"
 
 python3 - "${PATHOGEN_FASTA}" "${SHUFFLED_FASTA}" "${SHUFFLE_META_TSV}" "${SHUFFLE_SEED}" "${SHUFFLE_MODE}" <<'PY'
-"""Create a mononucleotide-shuffled FASTA with short, safe headers."""
+"""Create a mononucleotide-shuffled FASTA with short headers."""
 
 import gzip
 import random
@@ -196,13 +281,13 @@ def read_fasta(path_str):
 
 
 def wrap_sequence(seq, width=80):
-    """Yield fixed-width chunks from a sequence string."""
+    """Yield fixed-width sequence chunks."""
     for start in range(0, len(seq), width):
         yield seq[start:start + width]
 
 
 def shuffle_mono(seq, rng):
-    """Shuffle A/C/G/T positions while leaving other characters in place."""
+    """Shuffle A/C/G/T positions while preserving non-ACGT characters."""
     seq_list = list(seq)
     acgt_positions = [
         idx for idx, base in enumerate(seq_list)
@@ -264,64 +349,169 @@ require_file "${SHUFFLED_FASTA}"
 require_file "${SHUFFLE_META_TSV}"
 
 ###############################################################################
-# Write provenance
+# Step E: simulate shuffled pathogen read pool
 ###############################################################################
 
-log_info "Writing run metadata"
+log_info "Simulating shuffled pathogen pool with NanoSim"
+log_info "Shuffled genome: ${SHUFFLED_FASTA}"
+log_info "Pool size: ${SIM_POOL_N}"
+
+simulator.py genome \
+    --ref_g "${SHUFFLED_FASTA}" \
+    --model_prefix "${NS_MODEL_PREFIX}" \
+    --output "${SIM_PREFIX}" \
+    --number "${SIM_POOL_N}" \
+    --dna_type linear \
+    --seed 42 \
+    --num_threads "${THREADS}" \
+    --fastq
+
+python3 "${UTILS_PY}" combine-nanosim-fastq \
+    --sim_prefix "${SIM_PREFIX}" \
+    --out_fastq "${SIM_POOL_FASTQ}"
+
+gzip -c "${SIM_POOL_FASTQ}" > "${SIM_POOL_FASTQ_GZ}"
+gzip -t "${SIM_POOL_FASTQ_GZ}"
+
+###############################################################################
+# Step F: host/background depletion once, then reuse
+###############################################################################
+
+if [[ -s "${WORK_FASTQ}" ]]; then
+    log_info "Reusing existing depleted background: ${WORK_FASTQ}"
+elif [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
+    log_info "Running host/background depletion"
+    minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" \
+        | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
+        | samtools fastq -@ "${THREADS}" - \
+        | gzip -c > "${WORK_FASTQ}"
+    gzip -t "${WORK_FASTQ}"
+else
+    log_info "Host depletion disabled; copying REAL_FASTQ"
+    cp "${REAL_FASTQ}" "${WORK_FASTQ}"
+    gzip -t "${WORK_FASTQ}"
+fi
+
+###############################################################################
+# Step G: prepare minimap reference
+###############################################################################
+
+if [[ ! -s "${MINIMAP_DB_FASTA}" ]]; then
+    log_info "Decompressing minimap reference to: ${MINIMAP_DB_FASTA}"
+    gzip -cd "${MINIMAP_DB_GZ}" > "${MINIMAP_DB_FASTA}"
+else
+    log_info "Reusing existing minimap reference: ${MINIMAP_DB_FASTA}"
+fi
+
+###############################################################################
+# Step H: write provenance
+###############################################################################
 
 {
     printf 'parameter\tvalue\n'
     printf 'real_fastq\t%s\n' "${REAL_FASTQ}"
-    printf 'original_pathogen_fasta\t%s\n' "${PATHOGEN_FASTA}"
+    printf 'pathogen_fasta\t%s\n' "${PATHOGEN_FASTA}"
     printf 'shuffled_fasta\t%s\n' "${SHUFFLED_FASTA}"
     printf 'target_label\t%s\n' "${TARGET_LABEL}"
-    printf 'monkey_small_gz\t%s\n' "${MONKEY_SMALL_GZ}"
-    printf 'monkey_small_fasta\t%s\n' "${MONKEY_SMALL_FASTA}"
-    printf 'monkey_depletion_fasta\t%s\n' "${MONKEY_DEPLETION_FASTA}"
-    printf 'plasmo_masked_gz\t%s\n' "${PLASMO_MASKED_GZ}"
-    printf 'depletion_ref_fasta\t%s\n' "${DEPLETION_REF_FASTA}"
-    printf 'depleted_fastq\t%s\n' "${DEPLETED_FASTQ}"
-    printf 'minimap_db_gz\t%s\n' "${MINIMAP_DB_GZ}"
-    printf 'kraken_db_dir\t%s\n' "${KRAKEN_DB_DIR}"
     printf 'threads\t%s\n' "${THREADS}"
     printf 'train_reads_n\t%s\n' "${TRAIN_READS_N}"
     printf 'sim_pool_n\t%s\n' "${SIM_POOL_N}"
     printf 'spike_levels\t%s\n' "${SPIKE_LEVELS}"
     printf 'replicates\t%s\n' "${REPLICATES}"
+    printf 'min_mapq\t%s\n' "${MIN_MAPQ}"
+    printf 'min_align_len\t%s\n' "${MIN_ALIGN_LEN}"
     printf 'do_host_depletion\t%s\n' "${DO_HOST_DEPLETION}"
     printf 'shuffle_seed\t%s\n' "${SHUFFLE_SEED}"
     printf 'shuffle_mode\t%s\n' "${SHUFFLE_MODE}"
-    printf 'main_script\t%s\n' "${MAIN_SCRIPT}"
 } > "${RUN_META_TSV}"
 
 ###############################################################################
-# Run the main one-sample pipeline with shuffled FASTA
+# Step I: spike series
 ###############################################################################
 
-log_info "Launching main one-sample pipeline using shuffled pathogen FASTA"
-log_info "Main script: ${MAIN_SCRIPT}"
-log_info "Main output directory: ${OUT_DIR}/main_pipeline_run"
-log_info "Run log: ${RUN_LOG}"
+printf 'replicate\tspike_n\tmixed_fastq_gz\tkraken_report\tkraken_classified_reads\tkraken_target_reads\tminimap_bam\tminimap_target_alignments\n' \
+    > "${SUMMARY_TSV}"
 
-REAL_FASTQ="${REAL_FASTQ}" \
-MONKEY_SMALL_GZ="${MONKEY_SMALL_GZ}" \
-MONKEY_SMALL_FASTA="${MONKEY_SMALL_FASTA}" \
-MONKEY_DEPLETION_FASTA="${MONKEY_DEPLETION_FASTA}" \
-PLASMO_MASKED_GZ="${PLASMO_MASKED_GZ}" \
-DEPLETION_REF_FASTA="${DEPLETION_REF_FASTA}" \
-DEPLETED_FASTQ="${DEPLETED_FASTQ}" \
-PATHOGEN_FASTA="${SHUFFLED_FASTA}" \
-TARGET_LABEL="${TARGET_LABEL}" \
-MINIMAP_DB_GZ="${MINIMAP_DB_GZ}" \
-KRAKEN_DB_DIR="${KRAKEN_DB_DIR}" \
-SCRIPT_DIR="${SCRIPT_DIR}" \
-OUT_DIR="${OUT_DIR}/main_pipeline_run" \
-THREADS="${THREADS}" \
-TRAIN_READS_N="${TRAIN_READS_N}" \
-SIM_POOL_N="${SIM_POOL_N}" \
-SPIKE_LEVELS="${SPIKE_LEVELS}" \
-REPLICATES="${REPLICATES}" \
-DO_HOST_DEPLETION="${DO_HOST_DEPLETION}" \
-bash "${MAIN_SCRIPT}" 2>&1 | tee "${RUN_LOG}"
+log_info "Summary TSV: ${SUMMARY_TSV}"
 
-log_info "Shuffled control completed successfully"
+for rep in $(seq 1 "${REPLICATES}"); do
+    for spike_n in ${SPIKE_LEVELS}; do
+
+        MIX_DIR="${OUT_DIR}/mix_rep${rep}_n${spike_n}"
+        mkdir -p "${MIX_DIR}"
+
+        SPIKE_FASTQ_GZ="${MIX_DIR}/spike.fastq.gz"
+        MIX_FASTQ_GZ="${MIX_DIR}/mixed.fastq.gz"
+
+        KRAKEN_REPORT="${MIX_DIR}/kraken.report.tsv"
+        KRAKEN_OUT="${MIX_DIR}/kraken.classifications.tsv"
+        KRAKEN_SUM_TSV="${MIX_DIR}/kraken.summary.tsv"
+
+        BAM_OUT="${MIX_DIR}/minimap_sorted.bam"
+        BED_OUT="${MIX_DIR}/minimap_sorted.MASKED.bed"
+
+        log_info "rep=${rep} spike_n=${spike_n}"
+
+        SPIKE_SEED=$(( rep * 100000 + spike_n ))
+
+        python3 "${UTILS_PY}" sample-fastq \
+            --fastq_gz "${SIM_POOL_FASTQ_GZ}" \
+            --n_reads "${spike_n}" \
+            --seed "${SPIKE_SEED}" \
+            --out_fastq_gz "${SPIKE_FASTQ_GZ}"
+
+        gzip -t "${SPIKE_FASTQ_GZ}"
+
+        make_mixed_fastq_gz \
+            "${WORK_FASTQ}" \
+            "${SPIKE_FASTQ_GZ}" \
+            "${MIX_FASTQ_GZ}"
+
+        #######################################################################
+        # Kraken2
+        #######################################################################
+
+        kraken2 \
+            --db "${KRAKEN_DB_DIR}" \
+            --threads "${THREADS}" \
+            --report "${KRAKEN_REPORT}" \
+            --output "${KRAKEN_OUT}" \
+            "${MIX_FASTQ_GZ}" \
+            >/dev/null
+
+        python3 "${UTILS_PY}" summarise-kraken \
+            --kraken_report_tsv "${KRAKEN_REPORT}" \
+            --target_label "${TARGET_LABEL}" \
+            --out_tsv "${KRAKEN_SUM_TSV}"
+
+        K_CLASSIFIED="$(awk 'NR==2{print $2}' "${KRAKEN_SUM_TSV}")"
+        K_TARGET="$(awk 'NR==2{print $3}' "${KRAKEN_SUM_TSV}")"
+
+        #######################################################################
+        # Minimap2
+        #######################################################################
+
+        minimap2 -t "${THREADS}" -ax map-ont "${MINIMAP_DB_FASTA}" "${MIX_FASTQ_GZ}" \
+            | samtools view -Sh -q "${MIN_MAPQ}" -e "rlen >= ${MIN_ALIGN_LEN}" - \
+            | samtools sort -O bam -@ "${THREADS}" - \
+            | tee "${BAM_OUT}" \
+            | bamToBed > "${BED_OUT}"
+
+        MINIMAP_TARGET_ALN="$(python3 "${UTILS_PY}" count-minimap-target \
+            --bed "${BED_OUT}" \
+            --target_label "${TARGET_LABEL}")"
+
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "${rep}" \
+            "${spike_n}" \
+            "${MIX_FASTQ_GZ}" \
+            "${KRAKEN_REPORT}" \
+            "${K_CLASSIFIED}" \
+            "${K_TARGET}" \
+            "${BAM_OUT}" \
+            "${MINIMAP_TARGET_ALN}" \
+            >> "${SUMMARY_TSV}"
+    done
+done
+
+log_info "Done. Summary: ${SUMMARY_TSV}"
