@@ -53,7 +53,10 @@ KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/krake
 SCRIPT_DIR="${SCRIPT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection}"
 UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
 
-OUT_DIR="${OUT_DIR:-spikein_pilot_out}"
+#OUT_DIR="${OUT_DIR:-spikein_pilot_out}"
+
+OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_pilot_out_$(date +%Y%m%d_%H%M%S)"
+
 
 # Cached depleted background. This lets later runs reuse the expensive depletion.
 DEPLETED_FASTQ="${DEPLETED_FASTQ:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/MRC1023_AmM008WB.depleted.fastq.gz}"
@@ -217,7 +220,7 @@ simulator.py genome \
   --model_prefix "${NS_MODEL_PREFIX}" \
   --output "${OUT_DIR}/simulated_pathogen" \
   --number "${SIM_POOL_N}" \
-  --dna_type linear \
+  -dna_type linear \
   --seed 42 \
   --num_threads "${THREADS}" \
   --fastq

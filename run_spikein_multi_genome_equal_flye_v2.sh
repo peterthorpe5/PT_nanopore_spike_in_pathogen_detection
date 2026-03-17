@@ -6,29 +6,12 @@
 #$ -jc long
 #$ -mods l_hard mfree 450G
 #$ -adds l_hard h_vmem 450G
-#$ -N fly_SENS_assembly
+#$ -N multi_flye_SENS
 
 set -euo pipefail
 
-# run_spikein_one_sample_flye_assembly.sh
-#
-# One-sample, one-pathogen ONT spike-in pipeline with assembly-based detection.
-#
-# Workflow
-# --------
-# 1. Train NanoSim on the original real FASTQ using a smaller monkey reference
-# 2. Simulate ONT-like reads from one target pathogen genome
-# 3. Reuse or create a depleted background FASTQ
-# 4. Spike simulated reads into the depleted background at multiple levels
-# 5. Deduplicate FASTQ read names
-# 6. Assemble each mixed dataset with Flye --meta
-# 7. Classify the assembly FASTA with Kraken2
-#
-# Notes
-# -----
-# - Outputs are TSV, not comma-separated.
-# - Each spike level gets its own assembly folder.
-# - Kraken2 is run on assembly.fasta rather than the raw reads.
+# Multi-genome ONT spike-in pipeline with equal contribution per genome.
+# Detection is done by Flye metagenome assembly followed by Kraken2 on assembly.
 
 ###############################################################################
 # User inputs
@@ -45,15 +28,12 @@ PLASMO_MASKED_GZ="${PLASMO_MASKED_GZ:-/home/pthorpe001/data/project_back_up_2024
 DEPLETION_REF_FASTA="${DEPLETION_REF_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/host_plus_plasmo_depletion.fasta}"
 DEPLETED_FASTQ="${DEPLETED_FASTQ:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/MRC1023_AmM008WB.depleted.fastq.gz}"
 
-PATHOGEN_FASTA="${PATHOGEN_FASTA:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/GCA_014843685.1_ASM1484368v1_genomic.fna}"
-TARGET_LABEL="${TARGET_LABEL:-Plasmodium vivax}"
-
 KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 
 SCRIPT_DIR="${SCRIPT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection}"
 UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
 
-OUT_DIR="${OUT_DIR:-spikein_flye_assembly_out}"
+OUT_DIR="${OUT_DIR:-spikein_multi_genome_flye_out}"
 
 THREADS="${THREADS:-24}"
 SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000}"
@@ -61,6 +41,22 @@ REPLICATES="${REPLICATES:-3}"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
 TRAIN_READS_N="${TRAIN_READS_N:-200000}"
 SIM_POOL_N="${SIM_POOL_N:-20000}"
+
+###############################################################################
+# Pathogen genomes and labels
+###############################################################################
+
+PATHOGEN_FASTA_ARR=(
+  "/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/GCA_014843685.1_ASM1484368v1_genomic.fna"
+  "/home/pthorpe001/data/project_back_up_2024/kracken/all_plasmodium_genomes/GCA_001861195.1_383_1_genomic.fna"
+  "/home/pthorpe001/data/project_back_up_2024/kracken/all_plasmodium_genomes/GCA_023845545.1_PKCLINC047_genomic.fna"
+)
+
+TARGET_LABEL_ARR=(
+  "Plasmodium vivax"
+  "Plasmodium falciparum"
+  "Plasmodium knowlesi"
+)
 
 ###############################################################################
 # Checks
@@ -74,8 +70,7 @@ mkdir -p "$(dirname "${DEPLETED_FASTQ}")"
 for f in \
   "${REAL_FASTQ}" \
   "${MONKEY_DEPLETION_FASTA}" \
-  "${PLASMO_MASKED_GZ}" \
-  "${PATHOGEN_FASTA}"
+  "${PLASMO_MASKED_GZ}"
 do
   if [[ ! -f "${f}" ]]; then
     echo "ERROR: required input not found: ${f}"
@@ -98,6 +93,23 @@ if [[ ! -f "${UTILS_PY}" ]]; then
   exit 1
 fi
 
+if [[ "${#PATHOGEN_FASTA_ARR[@]}" -lt 2 ]]; then
+  echo "ERROR: define at least two pathogen genomes."
+  exit 1
+fi
+
+if [[ "${#PATHOGEN_FASTA_ARR[@]}" -ne "${#TARGET_LABEL_ARR[@]}" ]]; then
+  echo "ERROR: PATHOGEN_FASTA_ARR and TARGET_LABEL_ARR must have same length."
+  exit 1
+fi
+
+for f in "${PATHOGEN_FASTA_ARR[@]}"; do
+  if [[ ! -f "${f}" ]]; then
+    echo "ERROR: pathogen FASTA not found: ${f}"
+    exit 1
+  fi
+done
+
 python3 - <<'PY'
 import shutil
 
@@ -116,61 +128,31 @@ if missing:
 PY
 
 ###############################################################################
-# Report configuration
-###############################################################################
-
-echo "[INFO] REAL_FASTQ=${REAL_FASTQ}"
-echo "[INFO] PATHOGEN_FASTA=${PATHOGEN_FASTA}"
-echo "[INFO] TARGET_LABEL=${TARGET_LABEL}"
-echo "[INFO] OUT_DIR=${OUT_DIR}"
-echo "[INFO] DEPLETED_FASTQ=${DEPLETED_FASTQ}"
-echo "[INFO] THREADS=${THREADS}"
-echo "[INFO] SPIKE_LEVELS=${SPIKE_LEVELS}"
-echo "[INFO] REPLICATES=${REPLICATES}"
-
-###############################################################################
-# Prepare smaller monkey FASTA for NanoSim training
+# Prepare references
 ###############################################################################
 
 if [[ ! -s "${MONKEY_SMALL_FASTA}" ]]; then
-  echo "[INFO] Decompressing smaller monkey FASTA for NanoSim training"
   gzip -cd "${MONKEY_SMALL_GZ}" > "${MONKEY_SMALL_FASTA}"
-else
-  echo "[INFO] Reusing existing smaller monkey FASTA: ${MONKEY_SMALL_FASTA}"
 fi
-
-###############################################################################
-# Build combined depletion reference
-###############################################################################
 
 if [[ ! -s "${DEPLETION_REF_FASTA}" ]]; then
-  echo "[INFO] Building depletion reference: ${DEPLETION_REF_FASTA}"
   cat "${MONKEY_DEPLETION_FASTA}" > "${DEPLETION_REF_FASTA}"
   gzip -cd "${PLASMO_MASKED_GZ}" >> "${DEPLETION_REF_FASTA}"
-else
-  echo "[INFO] Reusing existing depletion reference: ${DEPLETION_REF_FASTA}"
 fi
 
 ###############################################################################
-# Step A: NanoSim training subsample from original FASTQ
+# NanoSim training from original FASTQ
 ###############################################################################
 
 TRAIN_FASTQ="${OUT_DIR}/train_${TRAIN_READS_N}.fastq.gz"
+NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"
 
-echo "[INFO] Creating NanoSim training subsample from original FASTQ"
 python3 "${UTILS_PY}" sample-fastq \
   --fastq_gz "${REAL_FASTQ}" \
   --n_reads "${TRAIN_READS_N}" \
   --seed 1 \
   --out_fastq_gz "${TRAIN_FASTQ}"
 
-###############################################################################
-# Step B: NanoSim training
-###############################################################################
-
-NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"
-
-echo "[INFO] Running NanoSim training"
 read_analysis.py genome \
   --read "${TRAIN_FASTQ}" \
   --ref_g "${MONKEY_SMALL_FASTA}" \
@@ -179,34 +161,39 @@ read_analysis.py genome \
   --fastq
 
 ###############################################################################
-# Step C: Simulate pathogen read pool
+# Simulate one pool per genome
 ###############################################################################
 
-SIM_POOL_FASTQ="${OUT_DIR}/sim_pool.fastq"
-SIM_POOL_FASTQ_GZ="${OUT_DIR}/sim_pool.fastq.gz"
+declare -a SIM_POOL_FASTQ_GZ_ARR=()
 
-echo "[INFO] Simulating pathogen pool with NanoSim"
-
-simulator.py genome \
-  --ref_g "${PATHOGEN_FASTA}" \
-  --model_prefix "${NS_MODEL_PREFIX}" \
-  --output "${OUT_DIR}/simulated_pathogen" \
-  --number "${SIM_POOL_N}" \
-  -dna_type linear \
-  --seed 42 \
-  --num_threads "${THREADS}" \
-  --fastq
+for i in "${!PATHOGEN_FASTA_ARR[@]}"; do
+  genome_idx=$((i + 1))
+  pathogen_fasta="${PATHOGEN_FASTA_ARR[$i]}"
+  sim_prefix="${OUT_DIR}/simulated_pathogen_${genome_idx}"
+  sim_pool_fastq="${OUT_DIR}/sim_pool_${genome_idx}.fastq"
+  sim_pool_fastq_gz="${OUT_DIR}/sim_pool_${genome_idx}.fastq.gz"
 
 
+  simulator.py genome \
+    --ref_g "${PATHOGEN_FASTA}" \
+    --model_prefix "${NS_MODEL_PREFIX}" \
+    --output "${OUT_DIR}/simulated_pathogen" \
+    --number "${SIM_POOL_N}" \
+    -dna_type linear \
+    --seed 42 \
+    --num_threads "${THREADS}" \
+    --fastq
 
-python3 "${UTILS_PY}" combine-nanosim-fastq \
-  --sim_prefix "${OUT_DIR}/simulated_pathogen" \
-  --out_fastq "${SIM_POOL_FASTQ}"
+  python3 "${UTILS_PY}" combine-nanosim-fastq \
+    --sim_prefix "${sim_prefix}" \
+    --out_fastq "${sim_pool_fastq}"
 
-gzip -c "${SIM_POOL_FASTQ}" > "${SIM_POOL_FASTQ_GZ}"
+  gzip -c "${sim_pool_fastq}" > "${sim_pool_fastq_gz}"
+  SIM_POOL_FASTQ_GZ_ARR+=("${sim_pool_fastq_gz}")
+done
 
 ###############################################################################
-# Step D: Host/background depletion once, then reuse
+# Host/background depletion once, then reuse
 ###############################################################################
 
 WORK_FASTQ="${DEPLETED_FASTQ}"
@@ -214,13 +201,11 @@ WORK_FASTQ="${DEPLETED_FASTQ}"
 if [[ -s "${WORK_FASTQ}" ]]; then
   echo "[INFO] Reusing existing depleted background: ${WORK_FASTQ}"
 elif [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
-  echo "[INFO] Running host/background depletion"
   minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" \
     | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
     | samtools fastq -@ "${THREADS}" - \
     | gzip -c > "${WORK_FASTQ}"
 else
-  echo "[INFO] Host depletion disabled; using REAL_FASTQ directly"
   ln -sf "${REAL_FASTQ}" "${WORK_FASTQ}"
 fi
 
@@ -288,7 +273,7 @@ PY
 }
 
 ###############################################################################
-# Helper: count assembly contigs and bases
+# Helper: assembly stats
 ###############################################################################
 
 assembly_stats() {
@@ -324,39 +309,77 @@ PY
 }
 
 ###############################################################################
-# Step E: spike, deduplicate, assemble, classify assembly
+# Summary header
 ###############################################################################
 
-SUMMARY_TSV="${OUT_DIR}/spikein_flye_summary.tsv"
-echo -e "replicate\tspike_n\tmixed_fastq_gz\tdedup_fastq\tflye_out_dir\tassembly_fasta\tassembly_n_contigs\tassembly_total_bases\tkraken_report\tkraken_classified_contigs\tkraken_target_contigs" > "${SUMMARY_TSV}"
+SUMMARY_TSV="${OUT_DIR}/spikein_multi_flye_summary.tsv"
+
+header=(
+  "replicate"
+  "spike_n_per_genome"
+  "n_genomes"
+  "total_spike_n"
+  "mixed_fastq_gz"
+  "dedup_fastq"
+  "flye_out_dir"
+  "assembly_fasta"
+  "assembly_n_contigs"
+  "assembly_total_bases"
+  "kraken_report"
+  "kraken_classified_contigs"
+)
+
+for i in "${!TARGET_LABEL_ARR[@]}"; do
+  genome_idx=$((i + 1))
+  header+=("target_label_g${genome_idx}")
+  header+=("kraken_target_contigs_g${genome_idx}")
+done
+
+{
+  IFS=$'\t'
+  echo "${header[*]}"
+} > "${SUMMARY_TSV}"
+
+###############################################################################
+# Spike, deduplicate, assemble, classify assembly
+###############################################################################
 
 for rep in $(seq 1 "${REPLICATES}"); do
   for spike_n in ${SPIKE_LEVELS}; do
-
     MIX_DIR="${OUT_DIR}/mix_rep${rep}_n${spike_n}"
     FLYE_DIR="${MIX_DIR}/flye_meta"
     mkdir -p "${MIX_DIR}"
 
     MIX_FASTQ_GZ="${MIX_DIR}/mixed.fastq.gz"
-    SPIKE_FASTQ_GZ="${MIX_DIR}/spike.fastq.gz"
+    COMBINED_SPIKE_FASTQ="${MIX_DIR}/combined_spike.fastq"
+    COMBINED_SPIKE_FASTQ_GZ="${MIX_DIR}/combined_spike.fastq.gz"
     DEDUP_FASTQ="${MIX_DIR}/mixed.dedup.fastq"
 
-    echo "[INFO] rep=${rep} spike_n=${spike_n}"
+    : > "${COMBINED_SPIKE_FASTQ}"
 
-    SPIKE_SEED=$(( rep * 100000 + spike_n ))
+    for i in "${!SIM_POOL_FASTQ_GZ_ARR[@]}"; do
+      genome_idx=$((i + 1))
+      sim_pool_fastq_gz="${SIM_POOL_FASTQ_GZ_ARR[$i]}"
+      spike_fastq_gz="${MIX_DIR}/spike_g${genome_idx}.fastq.gz"
+      spike_fastq="${MIX_DIR}/spike_g${genome_idx}.fastq"
 
-    python3 "${UTILS_PY}" sample-fastq \
-      --fastq_gz "${SIM_POOL_FASTQ_GZ}" \
-      --n_reads "${spike_n}" \
-      --seed "${SPIKE_SEED}" \
-      --out_fastq_gz "${SPIKE_FASTQ_GZ}"
+      spike_seed=$(( rep * 1000000 + genome_idx * 10000 + spike_n ))
 
-    cat "${WORK_FASTQ}" "${SPIKE_FASTQ_GZ}" > "${MIX_FASTQ_GZ}"
+      python3 "${UTILS_PY}" sample-fastq \
+        --fastq_gz "${sim_pool_fastq_gz}" \
+        --n_reads "${spike_n}" \
+        --seed "${spike_seed}" \
+        --out_fastq_gz "${spike_fastq_gz}"
 
-    echo "[INFO] Deduplicating FASTQ read names"
+      gzip -cd "${spike_fastq_gz}" > "${spike_fastq}"
+      cat "${spike_fastq}" >> "${COMBINED_SPIKE_FASTQ}"
+    done
+
+    gzip -c "${COMBINED_SPIKE_FASTQ}" > "${COMBINED_SPIKE_FASTQ_GZ}"
+    cat "${WORK_FASTQ}" "${COMBINED_SPIKE_FASTQ_GZ}" > "${MIX_FASTQ_GZ}"
+
     dedup_fastq_gz "${MIX_FASTQ_GZ}" "${DEDUP_FASTQ}"
 
-    echo "[INFO] Running Flye metagenome assembly"
     flye \
       --meta \
       --nano-hq "${DEDUP_FASTQ}" \
@@ -374,9 +397,7 @@ for rep in $(seq 1 "${REPLICATES}"); do
 
     KRAKEN_REPORT="${MIX_DIR}/assembly.kraken.report.tsv"
     KRAKEN_OUT="${MIX_DIR}/assembly.kraken.classifications.tsv"
-    KRAKEN_SUM_TSV="${MIX_DIR}/assembly.kraken.summary.tsv"
 
-    echo "[INFO] Running Kraken2 on assembly FASTA"
     kraken2 \
       --db "${KRAKEN_DB_DIR}" \
       --threads "${THREADS}" \
@@ -385,16 +406,51 @@ for rep in $(seq 1 "${REPLICATES}"); do
       "${ASSEMBLY_FASTA}" \
       >/dev/null
 
+    TMP_KRAKEN_SUM="${MIX_DIR}/assembly.kraken.summary.tmp.tsv"
+    FIRST_LABEL="${TARGET_LABEL_ARR[0]}"
+
     python3 "${UTILS_PY}" summarise-kraken \
       --kraken_report_tsv "${KRAKEN_REPORT}" \
-      --target_label "${TARGET_LABEL}" \
-      --out_tsv "${KRAKEN_SUM_TSV}"
+      --target_label "${FIRST_LABEL}" \
+      --out_tsv "${TMP_KRAKEN_SUM}"
 
-    K_CLASSIFIED="$(awk 'NR==2{print $2}' "${KRAKEN_SUM_TSV}")"
-    K_TARGET="$(awk 'NR==2{print $3}' "${KRAKEN_SUM_TSV}")"
+    K_CLASSIFIED="$(awk 'NR==2{print $2}' "${TMP_KRAKEN_SUM}")"
 
-    echo -e "${rep}\t${spike_n}\t${MIX_FASTQ_GZ}\t${DEDUP_FASTQ}\t${FLYE_DIR}\t${ASSEMBLY_FASTA}\t${ASSEMBLY_N_CONTIGS}\t${ASSEMBLY_TOTAL_BASES}\t${KRAKEN_REPORT}\t${K_CLASSIFIED}\t${K_TARGET}" \
-      >> "${SUMMARY_TSV}"
+    row=(
+      "${rep}"
+      "${spike_n}"
+      "${#PATHOGEN_FASTA_ARR[@]}"
+      "$(( spike_n * ${#PATHOGEN_FASTA_ARR[@]} ))"
+      "${MIX_FASTQ_GZ}"
+      "${DEDUP_FASTQ}"
+      "${FLYE_DIR}"
+      "${ASSEMBLY_FASTA}"
+      "${ASSEMBLY_N_CONTIGS}"
+      "${ASSEMBLY_TOTAL_BASES}"
+      "${KRAKEN_REPORT}"
+      "${K_CLASSIFIED}"
+    )
+
+    for i in "${!TARGET_LABEL_ARR[@]}"; do
+      genome_idx=$((i + 1))
+      target_label="${TARGET_LABEL_ARR[$i]}"
+      per_label_kraken_tsv="${MIX_DIR}/assembly.kraken.summary.g${genome_idx}.tsv"
+
+      python3 "${UTILS_PY}" summarise-kraken \
+        --kraken_report_tsv "${KRAKEN_REPORT}" \
+        --target_label "${target_label}" \
+        --out_tsv "${per_label_kraken_tsv}"
+
+      K_TARGET="$(awk 'NR==2{print $3}' "${per_label_kraken_tsv}")"
+
+      row+=("${target_label}")
+      row+=("${K_TARGET}")
+    done
+
+    {
+      IFS=$'\t'
+      echo "${row[*]}"
+    } >> "${SUMMARY_TSV}"
   done
 done
 

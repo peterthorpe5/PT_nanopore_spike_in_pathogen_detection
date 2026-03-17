@@ -52,7 +52,9 @@ KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/krake
 SCRIPT_DIR="${SCRIPT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection}"
 UTILS_PY="${SCRIPT_DIR}/spikein_utils.py"
 
-OUT_DIR="${OUT_DIR:-spikein_multi_genome_equal_out}"
+
+OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/multi_mix_$(date +%Y%m%d_%H%M%S)"
+#OUT_DIR="${OUT_DIR:-spikein_multi_genome_equal_out}"
 
 THREADS="${THREADS:-12}"
 SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000}"
