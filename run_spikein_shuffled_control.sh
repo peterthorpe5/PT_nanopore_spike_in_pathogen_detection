@@ -12,23 +12,22 @@ set -euo pipefail
 
 # run_spikein_shuffled_control.sh
 #
-# Negative control for the one-sample spike-in pipeline.
+# Negative control for the single-genome spike-in workflow.
 #
-# Logic:
-#   1. Take the original pathogen reference FASTA
-#   2. Mononucleotide-shuffle each sequence independently
-#   3. Simulate ONT-like reads from the shuffled reference using the same
-#      NanoSim model logic as the main pipeline
-#   4. Spike those reads into the same depleted background framework
-#   5. Run the standard one-sample pipeline unchanged, except PATHOGEN_FASTA
-#      points to the shuffled FASTA
+# Strategy:
+#   1. Shuffle each pathogen contig independently (mononucleotide shuffle)
+#   2. Simulate ONT-like reads from the shuffled reference using the same
+#      NanoSim model as the real-pathogen workflow
+#   3. Run the standard one-sample spike-in pipeline using the shuffled FASTA
 #
-# Purpose:
-#   Test whether the workflow yields spurious Plasmodium detection from
-#   composition-matched but biologically meaningless sequence.
+# Notes:
+#   - Headers in the shuffled FASTA are deliberately shortened to reduce the
+#     risk of very long downstream read names.
+#   - The script performs gzip integrity checks and writes provenance metadata.
+#   - The main pipeline is expected to be run_spikein_one_sample.sh.
 
 ###############################################################################
-# Inputs aligned to run_spikein_one_sample.sh
+# User-configurable inputs
 ###############################################################################
 
 REAL_FASTQ="${REAL_FASTQ:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
@@ -48,7 +47,7 @@ TARGET_LABEL="${TARGET_LABEL:-Plasmodium vivax}"
 MINIMAP_DB_GZ="${MINIMAP_DB_GZ:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz}"
 KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 
-SCRIPT_DIR="${SCRIPT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection}"
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 MAIN_SCRIPT="${MAIN_SCRIPT:-${SCRIPT_DIR}/run_spikein_one_sample.sh}"
 
 OUT_DIR="${OUT_DIR:-spikein_shuffled_control_out}"
@@ -63,59 +62,102 @@ SHUFFLE_SEED="${SHUFFLE_SEED:-123}"
 SHUFFLE_MODE="${SHUFFLE_MODE:-mononucleotide}"
 
 ###############################################################################
+# Helper functions
+###############################################################################
+
+log_info() {
+    printf '[INFO] %s\n' "$*"
+}
+
+log_warn() {
+    printf '[WARN] %s\n' "$*" >&2
+}
+
+log_error() {
+    printf '[ERROR] %s\n' "$*" >&2
+}
+
+require_file() {
+    local file_path="$1"
+    if [[ ! -f "${file_path}" ]]; then
+        log_error "Required file not found: ${file_path}"
+        exit 1
+    fi
+}
+
+require_dir() {
+    local dir_path="$1"
+    if [[ ! -d "${dir_path}" ]]; then
+        log_error "Required directory not found: ${dir_path}"
+        exit 1
+    fi
+}
+
+require_exe() {
+    local exe_name="$1"
+    if ! command -v "${exe_name}" >/dev/null 2>&1; then
+        log_error "Required executable not found on PATH: ${exe_name}"
+        exit 1
+    fi
+}
+
+gzip_test_if_gz() {
+    local file_path="$1"
+    if [[ "${file_path}" == *.gz ]]; then
+        log_info "Testing gzip integrity: ${file_path}"
+        gzip -t "${file_path}"
+    fi
+}
+
+###############################################################################
 # Checks
 ###############################################################################
 
 mkdir -p "${OUT_DIR}"
 
-for f in \
-    "${REAL_FASTQ}" \
-    "${PATHOGEN_FASTA}" \
-    "${MAIN_SCRIPT}" \
-    "${MONKEY_DEPLETION_FASTA}" \
-    "${MINIMAP_DB_GZ}" \
-    "${PLASMO_MASKED_GZ}"
-do
-    if [[ ! -f "${f}" ]]; then
-        echo "ERROR: required input not found: ${f}" >&2
-        exit 1
-    fi
-done
+require_file "${REAL_FASTQ}"
+require_file "${PATHOGEN_FASTA}"
+require_file "${MONKEY_DEPLETION_FASTA}"
+require_file "${PLASMO_MASKED_GZ}"
+require_file "${MINIMAP_DB_GZ}"
+require_file "${MAIN_SCRIPT}"
+require_dir "${KRAKEN_DB_DIR}"
 
 if [[ ! -f "${MONKEY_SMALL_GZ}" && ! -f "${MONKEY_SMALL_FASTA}" ]]; then
-    echo "ERROR: neither MONKEY_SMALL_GZ nor MONKEY_SMALL_FASTA exists." >&2
+    log_error "Neither MONKEY_SMALL_GZ nor MONKEY_SMALL_FASTA exists."
     exit 1
 fi
 
-if [[ ! -d "${KRAKEN_DB_DIR}" ]]; then
-    echo "ERROR: KRAKEN_DB_DIR not found: ${KRAKEN_DB_DIR}" >&2
-    exit 1
+require_exe python3
+require_exe gzip
+require_exe bash
+
+gzip_test_if_gz "${REAL_FASTQ}"
+gzip_test_if_gz "${PATHOGEN_FASTA}"
+gzip_test_if_gz "${PLASMO_MASKED_GZ}"
+gzip_test_if_gz "${MINIMAP_DB_GZ}"
+if [[ -f "${MONKEY_SMALL_GZ}" ]]; then
+    gzip_test_if_gz "${MONKEY_SMALL_GZ}"
 fi
-
-python3 - <<'PY'
-import shutil
-
-required = ["python3", "gzip", "bash"]
-missing = [tool for tool in required if shutil.which(tool) is None]
-if missing:
-    raise SystemExit(f"ERROR: missing executables on PATH: {missing}")
-PY
 
 ###############################################################################
-# Paths
+# Output paths
 ###############################################################################
 
 SHUFFLED_FASTA="${OUT_DIR}/pathogen.shuffled.fasta"
 SHUFFLE_META_TSV="${OUT_DIR}/shuffle_metadata.tsv"
+RUN_META_TSV="${OUT_DIR}/run_metadata.tsv"
 RUN_LOG="${OUT_DIR}/shuffle_control_run.log"
 
 ###############################################################################
-# Create shuffled pathogen FASTA
+# Create shuffled FASTA
 ###############################################################################
 
-echo "[INFO] Creating shuffled pathogen FASTA: ${SHUFFLED_FASTA}"
+log_info "Creating shuffled pathogen FASTA"
 
 python3 - "${PATHOGEN_FASTA}" "${SHUFFLED_FASTA}" "${SHUFFLE_META_TSV}" "${SHUFFLE_SEED}" "${SHUFFLE_MODE}" <<'PY'
+"""Create a mononucleotide-shuffled FASTA with short, safe headers."""
+
 import gzip
 import random
 import sys
@@ -124,7 +166,7 @@ from pathlib import Path
 
 
 def open_maybe_gzip(path_str, mode):
-    """Open plain-text or gzipped file based on suffix."""
+    """Open plain-text or gzipped file depending on suffix."""
     path = Path(path_str)
     if path.suffix == ".gz":
         return gzip.open(path, mode, encoding="utf-8", errors="replace")
@@ -132,9 +174,10 @@ def open_maybe_gzip(path_str, mode):
 
 
 def read_fasta(path_str):
-    """Yield (header, sequence) tuples from a FASTA file."""
+    """Yield FASTA records as (header, sequence) tuples."""
     header = None
     seq_parts = []
+
     with open_maybe_gzip(path_str, "rt") as handle:
         for raw_line in handle:
             line = raw_line.strip()
@@ -147,18 +190,19 @@ def read_fasta(path_str):
                 seq_parts = []
             else:
                 seq_parts.append(line.upper())
+
         if header is not None:
             yield header, "".join(seq_parts)
 
 
 def wrap_sequence(seq, width=80):
-    """Wrap a sequence string to fixed-width FASTA lines."""
+    """Yield fixed-width chunks from a sequence string."""
     for start in range(0, len(seq), width):
         yield seq[start:start + width]
 
 
 def shuffle_mono(seq, rng):
-    """Shuffle A/C/G/T positions while preserving non-ACGT characters in place."""
+    """Shuffle A/C/G/T positions while leaving other characters in place."""
     seq_list = list(seq)
     acgt_positions = [
         idx for idx, base in enumerate(seq_list)
@@ -166,44 +210,47 @@ def shuffle_mono(seq, rng):
     ]
     acgt_bases = [seq_list[idx] for idx in acgt_positions]
     rng.shuffle(acgt_bases)
+
     for idx, base in zip(acgt_positions, acgt_bases):
         seq_list[idx] = base
+
     return "".join(seq_list)
 
 
-in_fasta = sys.argv[1]
-out_fasta = sys.argv[2]
-meta_tsv = sys.argv[3]
+input_fasta = sys.argv[1]
+output_fasta = sys.argv[2]
+metadata_tsv = sys.argv[3]
 seed = int(sys.argv[4])
 shuffle_mode = sys.argv[5]
 
 if shuffle_mode != "mononucleotide":
-    raise SystemExit(f"ERROR: unsupported SHUFFLE_MODE: {shuffle_mode}")
+    raise SystemExit(f"Unsupported SHUFFLE_MODE: {shuffle_mode}")
 
 rng = random.Random(seed)
+records = list(read_fasta(input_fasta))
 
-records = list(read_fasta(in_fasta))
 if not records:
-    raise SystemExit("ERROR: no FASTA records found in PATHOGEN_FASTA")
+    raise SystemExit("No FASTA records found in PATHOGEN_FASTA.")
 
-with open(out_fasta, "wt", encoding="utf-8") as out_handle, \
-        open(meta_tsv, "wt", encoding="utf-8") as meta_handle:
+with open(output_fasta, "wt", encoding="utf-8") as out_handle, \
+        open(metadata_tsv, "wt", encoding="utf-8") as meta_handle:
     meta_handle.write(
-        "record_index\toriginal_header\tshuffled_header\tlength\tA\tC\tG\tT\tN_or_other\n"
+        "record_index\toriginal_header\tshuffled_header\tlength\t"
+        "A\tC\tG\tT\tN_or_other\n"
     )
 
     for idx, (header, seq) in enumerate(records, start=1):
-        shuffled = shuffle_mono(seq=seq, rng=rng)
-        shuffled_header = f"{header}__shuffled"
+        shuffled_seq = shuffle_mono(seq=seq, rng=rng)
+        shuffled_header = f"shuffle_contig_{idx}"
 
         out_handle.write(f">{shuffled_header}\n")
-        for chunk in wrap_sequence(seq=shuffled, width=80):
+        for chunk in wrap_sequence(seq=shuffled_seq, width=80):
             out_handle.write(chunk + "\n")
 
         counts = Counter(seq)
         n_other = sum(
-            count for base, count in counts.items()
-            if base not in {"A", "C", "G", "T"}
+            value for key, value in counts.items()
+            if key not in {"A", "C", "G", "T"}
         )
 
         meta_handle.write(
@@ -211,33 +258,50 @@ with open(out_fasta, "wt", encoding="utf-8") as out_handle, \
             f"{counts.get('A', 0)}\t{counts.get('C', 0)}\t"
             f"{counts.get('G', 0)}\t{counts.get('T', 0)}\t{n_other}\n"
         )
-
-print(out_fasta)
 PY
 
+require_file "${SHUFFLED_FASTA}"
+require_file "${SHUFFLE_META_TSV}"
+
 ###############################################################################
-# Record provenance
+# Write provenance
 ###############################################################################
+
+log_info "Writing run metadata"
 
 {
-    echo "parameter\tvalue"
-    echo -e "real_fastq\t${REAL_FASTQ}"
-    echo -e "original_pathogen_fasta\t${PATHOGEN_FASTA}"
-    echo -e "shuffled_fasta\t${SHUFFLED_FASTA}"
-    echo -e "target_label\t${TARGET_LABEL}"
-    echo -e "shuffle_seed\t${SHUFFLE_SEED}"
-    echo -e "shuffle_mode\t${SHUFFLE_MODE}"
-    echo -e "out_dir\t${OUT_DIR}"
-} > "${OUT_DIR}/run_metadata.tsv"
+    printf 'parameter\tvalue\n'
+    printf 'real_fastq\t%s\n' "${REAL_FASTQ}"
+    printf 'original_pathogen_fasta\t%s\n' "${PATHOGEN_FASTA}"
+    printf 'shuffled_fasta\t%s\n' "${SHUFFLED_FASTA}"
+    printf 'target_label\t%s\n' "${TARGET_LABEL}"
+    printf 'monkey_small_gz\t%s\n' "${MONKEY_SMALL_GZ}"
+    printf 'monkey_small_fasta\t%s\n' "${MONKEY_SMALL_FASTA}"
+    printf 'monkey_depletion_fasta\t%s\n' "${MONKEY_DEPLETION_FASTA}"
+    printf 'plasmo_masked_gz\t%s\n' "${PLASMO_MASKED_GZ}"
+    printf 'depletion_ref_fasta\t%s\n' "${DEPLETION_REF_FASTA}"
+    printf 'depleted_fastq\t%s\n' "${DEPLETED_FASTQ}"
+    printf 'minimap_db_gz\t%s\n' "${MINIMAP_DB_GZ}"
+    printf 'kraken_db_dir\t%s\n' "${KRAKEN_DB_DIR}"
+    printf 'threads\t%s\n' "${THREADS}"
+    printf 'train_reads_n\t%s\n' "${TRAIN_READS_N}"
+    printf 'sim_pool_n\t%s\n' "${SIM_POOL_N}"
+    printf 'spike_levels\t%s\n' "${SPIKE_LEVELS}"
+    printf 'replicates\t%s\n' "${REPLICATES}"
+    printf 'do_host_depletion\t%s\n' "${DO_HOST_DEPLETION}"
+    printf 'shuffle_seed\t%s\n' "${SHUFFLE_SEED}"
+    printf 'shuffle_mode\t%s\n' "${SHUFFLE_MODE}"
+    printf 'main_script\t%s\n' "${MAIN_SCRIPT}"
+} > "${RUN_META_TSV}"
 
 ###############################################################################
-# Run the main one-sample pipeline using the shuffled FASTA
+# Run the main one-sample pipeline with shuffled FASTA
 ###############################################################################
 
-echo "[INFO] Launching main one-sample pipeline with shuffled pathogen FASTA"
-echo "[INFO] Output dir: ${OUT_DIR}"
-echo "[INFO] Target label still set to: ${TARGET_LABEL}"
-echo "[INFO] Log: ${RUN_LOG}"
+log_info "Launching main one-sample pipeline using shuffled pathogen FASTA"
+log_info "Main script: ${MAIN_SCRIPT}"
+log_info "Main output directory: ${OUT_DIR}/main_pipeline_run"
+log_info "Run log: ${RUN_LOG}"
 
 REAL_FASTQ="${REAL_FASTQ}" \
 MONKEY_SMALL_GZ="${MONKEY_SMALL_GZ}" \
@@ -260,4 +324,4 @@ REPLICATES="${REPLICATES}" \
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION}" \
 bash "${MAIN_SCRIPT}" 2>&1 | tee "${RUN_LOG}"
 
-echo "[INFO] Shuffled control completed successfully."
+log_info "Shuffled control completed successfully"
