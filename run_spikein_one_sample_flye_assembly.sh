@@ -4,9 +4,9 @@
 #$ -V
 #$ -pe smp 24
 #$ -jc long
-#$ -mods l_hard mfree 490G
-#$ -adds l_hard h_vmem 490G
-#$ -N SENS_flye_assembly
+#$ -mods l_hard mfree 450G
+#$ -adds l_hard h_vmem 450G
+#$ -N fly_SENS_assembly
 
 set -euo pipefail
 
