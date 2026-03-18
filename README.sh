@@ -1,196 +1,357 @@
-# Nanopore spike-in detection threshold pipeline (Kraken2 + minimap2)
+# ONT in silico spike-in framework for pathogen detection
 
-This workflow performs in silico spike-in experiments for Oxford Nanopore FASTQ datasets. It takes a real background sample (`.fastq.gz`), optionally removes host reads, simulates ONT-like reads from one or more pathogen genomes using NanoSim, spikes simulated reads into the real dataset at varying amounts, and then runs two classification/detection approaches:
+This repository contains a reproducible framework for benchmarking low-abundance pathogen detection in Oxford Nanopore Technologies (ONT) sequencing data using in silico spike-in experiments. Synthetic ONT-like reads are generated from one or more pathogen genomes using NanoSim, added to a real empirical ONT background dataset, and then analysed using either direct read-level classification or assembly-based detection.
 
-1. Kraken2 taxonomic classification
-2. A minimap2 alignment-based method against a hard-masked Plasmodium/outgroup/bait reference database
+The framework supports:
 
-The primary output is a tab-separated summary table reporting, per spike level and replicate, how many reads were detected by each method.
+- single-genome spike-in experiments
+- multi-genome equal-contribution spike-in experiments
+- read-level detection using Kraken2 and minimap2
+- assembly-based detection using Flye followed by Kraken2
+- shuffled-sequence negative controls
+- automated summary collation and plotting across runs
+
+All summary tables are written as tab-separated files.
+
+---
 
 ## Overview
 
-For a single sample and a single pathogen genome:
+The workflow is designed to test how sensitively low-abundance pathogen reads can be detected against a realistic host-derived ONT background. The same empirical FASTQ is used both to train the NanoSim error model and to provide the background into which simulated reads are spiked.
 
-1. Host depletion (optional but recommended)
-2. Subsample real reads for NanoSim training
-3. Train a NanoSim error/length profile on the real reads
-4. Simulate a pool of ONT-like reads from the pathogen genome
-5. Create spike-in mixtures across a series of spike levels (absolute simulated read counts)
-6. Run Kraken2 and minimap2 per mixture
-7. Write a single TSV summary
+The general strategy is:
 
-A negative-control run is also supported where the pathogen genome is shuffled prior to simulation. This tests whether shuffled sequence can generate off-target hits in Kraken2 or minimap2.
+1. sample empirical reads from a real ONT FASTQ
+2. train NanoSim on those reads using a host reference
+3. simulate ONT-like reads from one or more pathogen genomes
+4. optionally shuffle pathogen sequence for negative controls
+5. deplete the real background FASTQ against a combined host plus masked parasite reference
+6. spike simulated reads into the depleted background at defined abundances
+7. analyse mixed datasets using:
+   - Kraken2 directly on reads
+   - minimap2 against a masked Plasmodium/outgroup reference
+   - Flye assembly followed by Kraken2 on assembled contigs
+8. summarise all runs across replicates, spike levels, and workflows
 
-## Repository contents
+---
 
-- `run_spikein_one_sample.sh`
-  - end-to-end run for one background sample and one pathogen
-  - optional host depletion
-  - NanoSim profiling and simulation
-  - spike-in series
-  - Kraken2 + minimap2 runs
-  - writes `spikein_summary.tsv`
+## Repository structure
 
-- `spikein_utils.py`
-  - Python utilities for reservoir sampling FASTQ.GZ, combining NanoSim outputs, parsing Kraken2 reports, and counting minimap2 target alignments
-  - all outputs are TSV (no comma-separated outputs)
+```text
+.
+├── configs
+│   ├── pathogen_panel_2.tsv
+│   └── pathogen_panel_3.tsv
+├── kraken_DB
+│   ├── build_kraken_DB.sh
+│   ├── build_kraken_DB_slurm.sh
+│   ├── create_viral_list.sh
+│   └── make_kraken_taxid_map.py
+├── old
+│   ├── run_all.sh
+│   ├── run_spikein_multi_genome_equal_flye_v2.sh
+│   ├── run_spikein_multi_genome_mix.sh
+│   ├── run_spikein_one_sample.sh
+│   ├── run_spikein_one_sample_flye_assembly.sh
+│   └── run_spikein_shuffled_control.sh
+├── run_spikein_multi_flye.sh
+├── run_spikein_multi_readlevel.sh
+├── run_spikein_shuffled_flye.sh
+├── run_spikein_shuffled_readlevel.sh
+├── run_spikein_single_flye.sh
+├── run_spikein_single_readlevel.sh
+├── scripts
+│   ├── assembly_stats.py
+│   ├── build_mixed_fastq.py
+│   ├── combine_nanosim_fastq.py
+│   ├── count_bed_hits.py
+│   ├── dedup_fastq_names.py
+│   ├── sample_fastq.py
+│   ├── shuffle_fasta.py
+│   ├── summarise_kraken_report.py
+│   └── summarise_spikein_runs.py
+├── spikein_utils.py
+└── README.md
 
-- `run_spikein_shuffled_control.sh`
-  - shuffles the pathogen genome, then calls `run_spikein_one_sample.sh`
-  - used as a negative control for off-target detection
 
-## Requirements
+Notes:
 
-### Software
+scripts/ contains the current standalone Python helper scripts used by the newer shell workflows.
 
-The pipeline assumes Oxford Nanopore reads (FASTQ.GZ). You will need:
+configs/ contains pathogen panels for multi-genome experiments.
 
-- minimap2
-- samtools
-- kraken2
-- bedtools (for `bamToBed`)
-- python3
-- gzip
+old/ contains earlier monolithic shell scripts retained for reference.
 
-NanoSim must be installed and available on your `PATH` in the active environment:
+spikein_utils.py may still be present for backwards compatibility with older runs, but the current recommended workflow is based on the standalone scripts in scripts/.
 
-- `read_analysis.py`
-- `simulator.py`
+Core workflows
+1. Single-genome read-level spike-in
 
-Optional but helpful:
+run_spikein_single_readlevel.sh
 
-- `seqkit` (the scripts do not require it, but it is useful for independent QC)
+This workflow:
 
-### Conda (example)
+samples empirical reads from the real ONT FASTQ
 
-Create a dedicated environment (example only; adjust to your local setup):
+trains NanoSim on the sampled reads
 
-```bash
-conda create --name spikein_ont \
-  python=3.11 \
-  minimap2 samtools bedtools kraken2 -c bioconda -c conda-forge
+simulates ONT-like reads from a single pathogen genome
 
-conda activate spikein_ont
+creates spike-in mixtures across a series of spike levels and replicates
 
-# Install NanoSim according to its documentation
-# https://github.com/bcgsc/NanoSim
+classifies mixed reads with Kraken2
 
+aligns mixed reads to the masked Plasmodium/outgroup reference with minimap2
 
+writes a per-run spikein_summary.tsv
 
-Inputs
+Primary outputs:
 
-You will need:
+mixed FASTQ files per replicate and spike level
 
-A real background FASTQ.GZ sample
+Kraken2 report and classification files
 
-A host reference genome FASTA (single FASTA file) for host depletion and NanoSim profiling
+minimap2 BAM and BED files
 
-A pathogen genome FASTA to simulate spike-in reads from
+spikein_summary.tsv
 
-A minimap2 reference FASTA database for the alignment-based detection method
+2. Single-genome assembly-based spike-in
 
-in this workflow, the reference is a hard-masked Plasmodium/outgroup/bait database
+run_spikein_single_flye.sh
 
-A Kraken2 database directory
+This workflow is similar to the single-genome read-level workflow, but after spike-in generation:
 
-Example paths used in this project:
+read identifiers are deduplicated if required
 
-Background FASTQ folder:
+each mixed FASTQ is assembled independently using Flye in metagenome mode
 
-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples
+assembly.fasta is classified with Kraken2
 
-Host reference genome folder (you must point to a single FASTA file for HOST_REF_FASTA):
+assembly statistics are computed
 
-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use
+a per-run assembly summary table is written
 
-Pathogen genome example:
+Primary outputs:
 
-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/genomes/GCF_000524495.1_Plas_inui_San_Antonio_1_V1_genomic.fasta
+deduplicated FASTQ files
 
-Hard-masked minimap2 detection database (gzipped FASTA):
+Flye assembly directories
 
-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz
+Kraken2 reports for assemblies
 
-Kraken2 DB folder:
+assembly summary tables
 
-/home/pthorpe001/data/project_back_up_2024/kracken
+3. Multi-genome equal-contribution read-level spike-in
 
-Configuration
+run_spikein_multi_readlevel.sh
 
-The main script reads configuration from environment variables (with sensible defaults for many settings). At minimum, you must set:
+This workflow supports two or more pathogen genomes at equal contribution per spike level. Pathogens are specified in a TSV config file.
 
-REAL_FASTQ (path to a single .fastq.gz background sample)
+At each spike level:
 
-HOST_REF_FASTA (path to a single host reference .fasta file)
+the same number of reads is sampled independently from each pathogen pool
 
-KRAKEN_DB_DIR (path to Kraken2 DB directory)
+all pathogen spike reads are combined
 
-Optional overrides include:
+the combined spike is added to the depleted background
 
-PATHOGEN_FASTA (pathogen genome fasta)
+Kraken2 and minimap2 analyses are run as for the single-genome read-level workflow
 
-MINIMAP_DB_GZ (hard-masked minimap database fasta.gz)
+Primary outputs:
 
-OUT_DIR (output folder)
+combined spike FASTQ per replicate and spike level
 
-THREADS (threads for minimap2/kraken2/nanosim)
+mixed FASTQ files
 
-DO_HOST_DEPLETION (true or false)
+Kraken2 report and classification files
 
-TRAIN_READS_N (reads used for NanoSim training; default 200000)
+minimap2 BAM and BED files
 
-SIM_POOL_N (simulated pathogen read pool size; default 20000)
+spikein_multi_summary.tsv
 
-SPIKE_LEVELS (absolute read counts to spike)
+4. Multi-genome equal-contribution assembly-based spike-in
 
-REPLICATES (number of replicates per spike level)
+run_spikein_multi_flye.sh
 
-MIN_ALIGN_LEN (min alignment length filter used in minimap2 pipeline; default 500)
+This workflow extends the multi-genome spike-in design to assembly-based detection:
 
-MIN_MAPQ (min MAPQ filter used in minimap2 pipeline; default 15)
+equal-contribution multi-pathogen mixtures are generated
 
-Running the one-pathogen pilot
+mixed FASTQ files are deduplicated if required
 
-Activate your environment and export the required paths:
+Flye assemblies are produced for each replicate and spike level
 
+assembled contigs are classified with Kraken2
 
+assembly summaries are written
 
+Primary outputs:
 
-conda activate spikein_ont
+Flye assembly directories
 
-export REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC0123_AmM001WB.fastq.gz"
-export HOST_REF_FASTA="/path/to/your/host_reference.fasta"
-export PATHOGEN_FASTA="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/genomes/GCF_000524495.1_Plas_inui_San_Antonio_1_V1_genomic.fasta"
-export MINIMAP_DB_GZ="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz"
-export KRAKEN_DB_DIR="/home/pthorpe001/data/project_back_up_2024/kracken"
+Kraken2 assembly reports
 
-bash run_spikein_one_sample.sh
+spikein_multi_flye_summary.tsv
 
+5. Shuffled negative controls
 
+run_spikein_shuffled_readlevel.sh
+run_spikein_shuffled_flye.sh
+
+These workflows generate negative-control pathogen references by shuffling each pathogen contig independently before simulation.
+
+The purpose is to test whether apparent detection can arise from:
+
+sequence composition alone
+
+non-specific Kraken classification
+
+non-specific minimap2 alignment
+
+assembly artefacts
+
+The shuffled controls then follow the same read-level or assembly-based workflow as the true pathogen runs.
+
+Primary outputs:
+
+shuffled FASTA file
+
+shuffle metadata table
+
+standard read-level or assembly-based outputs
+
+Python helper scripts
+
+The current workflows rely on standalone helper scripts in scripts/.
+
+sample_fastq.py
+
+Reservoir-samples reads from a gzipped FASTQ file without loading the full file into memory.
+
+Typical use:
+
+python3 scripts/sample_fastq.py \
+  --fastq_gz input.fastq.gz \
+  --n_reads 200000 \
+  --seed 1 \
+  --out_fastq_gz sampled.fastq.gz
+combine_nanosim_fastq.py
+
+Combines NanoSim FASTQ outputs into a single FASTQ file for downstream sampling.
+
+build_mixed_fastq.py
+
+Builds a mixed gzipped FASTQ file from a background FASTQ and one or more spike FASTQ files. This is preferred over raw gzip concatenation because it provides a safer and more transparent construction step.
+
+shuffle_fasta.py
+
+Creates a shuffled FASTA for negative-control experiments. Standard A/C/G/T positions are shuffled, while non-ACGT characters are preserved in place.
+
+summarise_kraken_report.py
+
+Parses Kraken2 reports and extracts:
+
+classified read count
+
+unclassified read count
+
+target-specific read or contig count
+
+This script replaces earlier logic that could mis-handle classified read totals.
+
+count_bed_hits.py
+
+Counts BED entries matching a given target label or alias set. This is used for minimap2-derived target counting and can also be used to inspect which reference names are being hit.
+
+dedup_fastq_names.py
+
+Ensures that FASTQ read identifiers are unique before Flye assembly.
+
+assembly_stats.py
+
+Computes basic assembly metrics from an assembly FASTA, including contig count and total assembled bases.
+
+summarise_spikein_runs.py
+
+Recursively scans run output directories, collates summary tables across workflows, writes harmonised combined tables, logs missing or malformed outputs, and generates overview plots.
+
+Configuration files for multi-genome runs
+
+Multi-genome workflows use TSV config files in configs/.
+
+Examples:
+
+configs/pathogen_panel_2.tsv
+
+configs/pathogen_panel_3.tsv
+
+The expected structure is:
+
+pathogen_fasta	target_label
+/path/to/genome1.fna	Plasmodium vivax
+/path/to/genome2.fna	Plasmodium falciparum
+
+For three-genome runs:
+
+pathogen_fasta	target_label
+/path/to/genome1.fna	Plasmodium vivax
+/path/to/genome2.fna	Plasmodium falciparum
+/path/to/genome3.fna	Plasmodium knowlesi
+
+The first column should contain the reference FASTA path.
+The second column should contain the label used for downstream matching and reporting.
+
+Required software
+
+The shell workflows assume the following tools are available on PATH:
+
+python3
+
+gzip
+
+minimap2
+
+samtools
+
+kraken2
+
+bamToBed
+
+read_analysis.py from NanoSim
+
+simulator.py from NanoSim
+
+flye for assembly workflows
+
+Additional Python packages may be required for the helper scripts, depending on your local environment.
+
+Typical inputs
+
+The pipeline requires:
+
+a real ONT background FASTQ
+
+a smaller host reference for NanoSim training
+
+a larger depletion reference for host/background filtering
+
+a masked Plasmodium/outgroup reference for minimap2
+
+one or more pathogen genome FASTA files
+
+a Kraken2 database containing the desired taxonomic scope
+
+The real ONT FASTQ is used in two distinct ways:
+
+as the empirical basis for NanoSim model training
+
+as the background into which simulated pathogen reads are spiked
 
 Output structure
 
-The OUT_DIR (default spikein_pilot_out) contains:
+Each run creates a separate output directory. Within each run, replicate and spike-level combinations are typically placed in separate subdirectories.
 
-background.fastq.gz
-
-host-depleted background reads if host depletion is enabled, otherwise a symlink to REAL_FASTQ
-
-train_<N>.fastq.gz
-
-subsample used for NanoSim profiling
-
-nanosim_training*
-
-NanoSim model/profile outputs
-
-sim_pool.fastq.gz
-
-large pool of simulated pathogen reads
-
-mix_rep<rep>_n<spike_n>/
-
-per spike level and replicate subfolder containing:
+For read-level workflows, outputs commonly include:
 
 mixed.fastq.gz
 
@@ -200,45 +361,129 @@ kraken.classifications.tsv
 
 kraken.summary.tsv
 
-minimap_sorted_nodup.bam
+minimap_sorted.bam
 
-minimap_sorted_nodup.MASKED.bed
+minimap_sorted.MASKED.bed
 
-spikein_summary.tsv
+spikein_summary.tsv or spikein_multi_summary.tsv
 
-a single TSV summary table across all spike levels and replicates
+For assembly-based workflows, outputs commonly include:
 
-The summary TSV columns are:
+deduplicated FASTQ
 
-replicate
+Flye output directories
 
-spike_n
+assembly.fasta
 
-mixed_fastq_gz
+Kraken2 report for assemblies
 
-kraken_report
+assembly metrics
 
-kraken_classified_reads
+spikein_flye_summary.tsv or spikein_multi_flye_summary.tsv
 
-kraken_target_reads
+Shuffled-control runs additionally include:
 
-minimap_bam
+pathogen.shuffled.fasta
 
-minimap_target_alignments
+shuffle_metadata.tsv
 
-Negative control: shuffled genome spike-in
+Example job submission
 
-This run shuffles the pathogen genome sequence, simulates reads from the shuffled genome using the same NanoSim model approach, and repeats the spike series. It is intended to test for off-target detection artefacts.
+The newer shell scripts are designed to work on an SGE cluster. To avoid issues with spool directories, it is recommended to pass the repository root explicitly via REPO_DIR.
 
+Move to the repository root first:
 
-conda activate spikein_ont
+cd /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection
+Single-genome read-level
+qsub -v REPO_DIR="$(pwd)" run_spikein_single_readlevel.sh
+Single-genome assembly-based
+qsub -v REPO_DIR="$(pwd)" run_spikein_single_flye.sh
+Two-genome read-level
+qsub -v REPO_DIR="$(pwd)",PATHOGEN_CONFIG_TSV="$(pwd)/configs/pathogen_panel_2.tsv" run_spikein_multi_readlevel.sh
+Three-genome assembly-based
+qsub -v REPO_DIR="$(pwd)",PATHOGEN_CONFIG_TSV="$(pwd)/configs/pathogen_panel_3.tsv" run_spikein_multi_flye.sh
+Shuffled controls
+qsub -v REPO_DIR="$(pwd)" run_spikein_shuffled_readlevel.sh
+qsub -v REPO_DIR="$(pwd)" run_spikein_shuffled_flye.sh
 
-export REAL_FASTQ="/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC0123_AmM001WB.fastq.gz"
-export HOST_REF_FASTA="/path/to/your/host_reference.fasta"
-export PATHOGEN_FASTA="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/genomes/GCF_000524495.1_Plas_inui_San_Antonio_1_V1_genomic.fasta"
-export MINIMAP_DB_GZ="/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta.gz"
-export KRAKEN_DB_DIR="/home/pthorpe001/data/project_back_up_2024/kracken"
+If preferred, absolute paths can be used directly for PATHOGEN_CONFIG_TSV and other variables.
 
-export OUT_DIR="spikein_shuffled_control_out"
+Summarising runs
 
-bash run_spikein_shuffled_control.sh
+The scripts/summarise_spikein_runs.py script can be used to collate and visualise results across multiple run directories.
+
+Typical use:
+
+python3 scripts/summarise_spikein_runs.py \
+  --input_dirs /path/to/run_parent_1 /path/to/run_parent_2 \
+  --out_dir spikein_summary_report \
+  --verbose
+
+This script will:
+
+recursively find recognised spike-in summary files
+
+merge outputs across workflows
+
+write harmonised wide and long tabular summaries
+
+record missing or malformed files
+
+generate overview plots in PNG and PDF format
+
+Expected summary outputs include:
+
+run_manifest.tsv
+
+combined_wide.tsv
+
+combined_long.tsv
+
+missing_or_problematic_files.tsv
+
+plot_manifest.tsv
+
+plots/
+
+Interpretation notes
+Kraken2
+
+Kraken2 is used both at the read level and on assembled contigs. Parsed summary tables should be interpreted carefully, especially when comparing baseline background signal against low spike-in levels.
+
+minimap2
+
+Minimap2 alignments are counted using BED output and target-label matching. The quality of minimap-based target summaries depends on how well target labels correspond to the actual reference names in the masked alignment reference. For complex references containing multiple related taxa, it may be necessary to use explicit alias mapping rather than simple free-text matching.
+
+Shuffled controls
+
+Detection in shuffled-sequence controls should be interpreted as evidence of non-specific classification, alignment, or assembly behaviour rather than genuine biological signal.
+
+Historical scripts
+
+The old/ directory contains earlier shell workflows that were used during development. These may still be useful for provenance or comparison, but they are not the recommended current entry points for new analyses.
+
+The current recommended workflows are:
+
+run_spikein_single_readlevel.sh
+
+run_spikein_single_flye.sh
+
+run_spikein_multi_readlevel.sh
+
+run_spikein_multi_flye.sh
+
+run_spikein_shuffled_readlevel.sh
+
+run_spikein_shuffled_flye.sh
+
+with helper scripts from scripts/.
+
+Notes on maintenance
+
+The current codebase separates orchestration from parsing and manipulation:
+
+shell scripts handle looping, environment setup, and tool execution
+
+Python helper scripts handle FASTQ sampling, FASTA shuffling, Kraken parsing, BED hit counting, mixed FASTQ construction, assembly summaries, and run collation
+
+This separation is intended to make the pipeline easier to debug, maintain, and extend.
