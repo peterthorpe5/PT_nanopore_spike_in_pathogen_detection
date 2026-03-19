@@ -176,24 +176,75 @@ def read_key_value_tsv(path: Path) -> dict[str, str]:
 
 
 def detect_shuffle_context(run_dir: Path) -> tuple[bool, Optional[Path], Optional[Path]]:
-    """Detect whether a run directory belongs to a shuffled control analysis."""
-    run_metadata = run_dir / "run_metadata.tsv"
-    shuffle_metadata = run_dir / "shuffle_metadata.tsv"
+    """Detect whether a run directory belongs to a shuffled control analysis.
 
-    if run_metadata.exists() or shuffle_metadata.exists():
-        return True, run_metadata if run_metadata.exists() else None, (
-            shuffle_metadata if shuffle_metadata.exists() else None
+    The previous implementation treated the mere presence of ``run_metadata.tsv``
+    as evidence of a shuffled control, which incorrectly marked many ordinary
+    runs as shuffled. This version uses a stricter rule set.
+
+    Args:
+        run_dir: Directory containing a per-run summary table.
+
+    Returns:
+        Tuple of:
+            - boolean shuffled-control flag
+            - run metadata path if present
+            - shuffle metadata path if present
+    """
+    candidate_dirs = [run_dir, run_dir.parent]
+
+    for candidate_dir in candidate_dirs:
+        run_metadata = candidate_dir / "run_metadata.tsv"
+        shuffle_metadata = candidate_dir / "shuffle_metadata.tsv"
+
+        if shuffle_metadata.exists():
+            return True, (
+                run_metadata if run_metadata.exists() else None
+            ), shuffle_metadata
+
+        metadata_map = (
+            read_key_value_tsv(path=run_metadata)
+            if run_metadata.exists()
+            else {}
+        )
+        metadata_text = " ".join(
+            str(value).lower() for value in metadata_map.values()
         )
 
-    parent = run_dir.parent
-    run_metadata = parent / "run_metadata.tsv"
-    shuffle_metadata = parent / "shuffle_metadata.tsv"
-    if run_metadata.exists() or shuffle_metadata.exists():
-        return True, run_metadata if run_metadata.exists() else None, (
-            shuffle_metadata if shuffle_metadata.exists() else None
+        has_shuffle_metadata = any(
+            key in metadata_map
+            for key in ["shuffled_fasta", "shuffle_seed", "shuffle_mode"]
+        )
+        path_suggests_shuffle = any(
+            token in str(candidate_dir).lower()
+            for token in [
+                "spikein_shuffle_",
+                "shuffle_read",
+                "shuffle_flye",
+                "shuffled_control",
+                "main_run",
+            ]
+        ) and "spikein_shuffle_" in str(candidate_dir).lower()
+
+        metadata_suggests_shuffle = any(
+            token in metadata_text
+            for token in ["shuffle", "shuffled"]
         )
 
-    return False, None, None
+        if has_shuffle_metadata or path_suggests_shuffle or metadata_suggests_shuffle:
+            return True, (
+                run_metadata if run_metadata.exists() else None
+            ), (
+                shuffle_metadata if shuffle_metadata.exists() else None
+            )
+
+    first_run_metadata = run_dir / "run_metadata.tsv"
+    if not first_run_metadata.exists():
+        first_run_metadata = run_dir.parent / "run_metadata.tsv"
+
+    return False, (
+        first_run_metadata if first_run_metadata.exists() else None
+    ), None
 
 
 
@@ -901,58 +952,30 @@ def style_worksheet(worksheet) -> None:
 
 
 
-
-def normalise_excel_value(value):
-    """Convert values into an Excel-safe representation.
-
-    Args:
-        value: Input cell value.
-
-    Returns:
-        Excel-safe value.
-    """
-    if pd.isna(value):
-        return None
-    if hasattr(value, "item"):
-        try:
-            return value.item()
-        except Exception:
-            pass
-    if isinstance(value, (list, dict, set, tuple)):
-        return str(value)
-    return value
-
-
-def dataframe_to_excel_sheet(workbook, sheet_name, dataframe):
-    """Write a pandas DataFrame to a formatted Excel worksheet.
+def dataframe_to_excel_sheet(workbook: Workbook, sheet_name: str, dataframe: pd.DataFrame) -> None:
+    """Write a DataFrame to a workbook sheet and apply formatting.
 
     Args:
         workbook: OpenPyXL workbook object.
-        sheet_name: Name of the worksheet.
+        sheet_name: Worksheet name.
         dataframe: DataFrame to write.
 
     Returns:
         None.
     """
-    worksheet = workbook.create_sheet(title=sheet_name)
-
-    header_fill = PatternFill("solid", fgColor="1F4E79")
-    header_font = Font(bold=True, color="FFFFFF")
-    header_align = Alignment(vertical="center", wrap_text=True)
+    worksheet = workbook.create_sheet(title=sheet_name[:31])
+    if dataframe.empty:
+        worksheet.append(["no_data"])
+        style_worksheet(worksheet)
+        return
 
     worksheet.append(list(dataframe.columns))
-
-    for cell in worksheet[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = header_align
-
-    for _, row in dataframe.iterrows():
+    for row in dataframe.itertuples(index=False, name=None):
         safe_row = [normalise_excel_value(value=value) for value in row]
         worksheet.append(safe_row)
 
-    worksheet.freeze_panes = "A2"
-    worksheet.auto_filter.ref = worksheet.dimensions
+    style_worksheet(worksheet)
+
 
 
 def write_excel_workbook(
