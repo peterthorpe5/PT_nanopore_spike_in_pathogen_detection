@@ -13,12 +13,12 @@ python3 summarise_spikein_runs_v3.py \
 ########################
 ## After running the above, you can then generate a report with:
 
-python3 make_spikein_report_v3.py \
+python3 make_spikein_report_v4.py \
   --summary_dir /path/to/spikein_summary_report \
   --title "ONT spike-in summary report"
 
 
- python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_report_v3.py \
+ python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_report_v4.py \
   --summary_dir spikein_summary_report \
   --title "ONT spike-in summary report"
 
