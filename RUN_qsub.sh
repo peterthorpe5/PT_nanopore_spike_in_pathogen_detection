@@ -27,12 +27,12 @@ qsub -V "$REPO_DIR/shells/run_spikein_shuffled_flye_medaka.sh"
 
 
 # --- Melon Single ---
-qsub -V "$REPO_DIR/shells/run_melon_single.sh"
+qsub -V "$REPO_DIR/shells/melon/run_melon_single.sh"
 
 # --- Melon Multi ---
 export PATHOGEN_CONFIG_TSV="$REPO_DIR/configs/pathogen_panel_2.tsv"
-qsub -V "$REPO_DIR/shells/run_melon_multi.sh"
+qsub -V "$REPO_DIR/shells/melon/run_melon_mixed.sh"
 
 # --- Melon Multi ---
 export PATHOGEN_CONFIG_TSV="$REPO_DIR/configs/pathogen_panel_3.tsv"
-qsub -V "$REPO_DIR/shells/run_melon_multi.sh"
+qsub -V "$REPO_DIR/shells/melon/run_melon_mixed.sh"
