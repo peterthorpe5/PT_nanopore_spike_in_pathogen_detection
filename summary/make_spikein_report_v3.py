@@ -263,6 +263,7 @@ def infer_target_label_from_run(run_path: str, fallback: str = "") -> str:
     return "Unspecified target"
 
 
+
 def normalise_manifest(run_manifest: pd.DataFrame) -> pd.DataFrame:
     """Normalise manifest fields for display and report logic.
 
@@ -295,8 +296,8 @@ def normalise_manifest(run_manifest: pd.DataFrame) -> pd.DataFrame:
             f"Observed columns: {', '.join(df.columns)}"
         )
 
-if run_path_column != "run_path":
-    df = df.rename(columns={run_path_column: "run_path"})
+    if run_path_column != "run_path":
+        df = df.rename(columns={run_path_column: "run_path"})
 
     if "run_name" not in df.columns:
         df["run_name"] = df["run_path"].map(lambda x: Path(str(x)).name)
@@ -304,14 +305,22 @@ if run_path_column != "run_path":
     if "workflow" not in df.columns:
         df["workflow"] = "unknown"
 
-    df["is_shuffled_control_recomputed"] = df["run_path"].map(recompute_shuffled_flag)
+    df["is_shuffled_control_recomputed"] = df["run_path"].map(
+        recompute_shuffled_flag
+    )
 
     if "target_label" not in df.columns:
         df["target_label"] = ""
 
     df["target_label_display"] = [
-        infer_target_label_from_run(run_path=str(run_path), fallback=str(target_label))
-        for run_path, target_label in zip(df["run_path"], df["target_label"])
+        infer_target_label_from_run(
+            run_path=str(run_path),
+            fallback=str(target_label),
+        )
+        for run_path, target_label in zip(
+            df["run_path"],
+            df["target_label"],
+        )
     ]
 
     df["run_path_compact"] = df["run_path"].map(compact_path)
