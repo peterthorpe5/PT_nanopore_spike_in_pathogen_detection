@@ -103,7 +103,10 @@ def coerce_numeric_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
             "file_path",
         }:
             continue
-        converted = pd.to_numeric(df[column], errors="ignore")
+        try:
+            df[column] = pd.to_numeric(df[column])
+        except Exception:
+            pass
         df[column] = converted
     return df
 
@@ -270,8 +273,30 @@ def normalise_manifest(run_manifest: pd.DataFrame) -> pd.DataFrame:
         Normalised manifest.
     """
     df = run_manifest.copy()
-    if "run_path" not in df.columns:
-        raise ValueError("run_manifest.tsv must contain a run_path column.")
+
+    candidate_run_path_columns = [
+        "run_path",
+        "run_dir",
+        "run_directory",
+        "run_root",
+        "source_dir",
+    ]
+
+    run_path_column = None
+    for candidate in candidate_run_path_columns:
+        if candidate in df.columns:
+            run_path_column = candidate
+            break
+
+    if run_path_column is None:
+        raise ValueError(
+            "run_manifest.tsv must contain one of the following columns: "
+            f"{', '.join(candidate_run_path_columns)}. "
+            f"Observed columns: {', '.join(df.columns)}"
+        )
+
+if run_path_column != "run_path":
+    df = df.rename(columns={run_path_column: "run_path"})
 
     if "run_name" not in df.columns:
         df["run_name"] = df["run_path"].map(lambda x: Path(str(x)).name)
@@ -303,10 +328,29 @@ def normalise_long_table(combined_long: pd.DataFrame) -> pd.DataFrame:
         Normalised long-format table.
     """
     df = combined_long.copy()
+    candidate_run_path_columns = [
+        "run_path",
+        "run_dir",
+        "run_directory",
+        "run_root",
+        "source_dir",
+    ]
+
+    run_path_column = None
+    for candidate in candidate_run_path_columns:
+        if candidate in df.columns:
+            run_path_column = candidate
+            break
+
+    if run_path_column is not None and run_path_column != "run_path":
+        df = df.rename(columns={run_path_column: "run_path"})
+
     if "run_path" in df.columns:
         df["is_shuffled_control_recomputed"] = df["run_path"].map(recompute_shuffled_flag)
     else:
         df["is_shuffled_control_recomputed"] = False
+
+
     if "target_label" not in df.columns:
         df["target_label"] = "Unspecified target"
     df["target_label"] = df["target_label"].replace("", "Unspecified target")
