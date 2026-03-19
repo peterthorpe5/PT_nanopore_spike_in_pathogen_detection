@@ -391,13 +391,29 @@ def normalise_long_table(combined_long: pd.DataFrame) -> pd.DataFrame:
         dataframe=df,
         candidates=["metric", "metric_name"],
     )
+    value_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["value", "metric_value", "observed_value", "count"],
+    )
+    spike_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["spike_n", "total_spike_n", "spike_level", "n_reads_spiked"],
+    )
 
+    rename_map = {}
     if run_path_column and run_path_column != "run_path":
-        df = df.rename(columns={run_path_column: "run_path"})
+        rename_map[run_path_column] = "run_path"
     if workflow_column and workflow_column != "workflow":
-        df = df.rename(columns={workflow_column: "workflow"})
+        rename_map[workflow_column] = "workflow"
     if metric_column and metric_column != "metric":
-        df = df.rename(columns={metric_column: "metric"})
+        rename_map[metric_column] = "metric"
+    if value_column and value_column != "value":
+        rename_map[value_column] = "value"
+    if spike_column and spike_column != "spike_n":
+        rename_map[spike_column] = "spike_n"
+
+    if rename_map:
+        df = df.rename(columns=rename_map)
 
     if "run_path" in df.columns:
         df["is_shuffled_control_recomputed"] = df["run_path"].map(
@@ -417,6 +433,7 @@ def normalise_long_table(combined_long: pd.DataFrame) -> pd.DataFrame:
     df["workflow"] = df["workflow"].replace("", "unknown")
     df["metric"] = df["metric"].replace("", "Unspecified metric")
     return df
+
 
 
 def summarise_key_metrics(combined_long: pd.DataFrame) -> pd.DataFrame:
@@ -674,7 +691,7 @@ def select_plot_groups(
 
     plot_path_column = get_first_existing_column(
         dataframe=df,
-        candidates=["plot_path", "path"],
+        candidates=["plot_path", "png_path", "path"],
     )
     workflow_column = get_first_existing_column(
         dataframe=df,
@@ -690,22 +707,26 @@ def select_plot_groups(
     )
     plot_kind_column = get_first_existing_column(
         dataframe=df,
-        candidates=["plot_kind"],
+        candidates=["plot_kind", "plot_group"],
     )
 
     if plot_path_column is None:
         return {}
 
+    rename_map = {}
     if plot_path_column != "plot_path":
-        df = df.rename(columns={plot_path_column: "plot_path"})
+        rename_map[plot_path_column] = "plot_path"
     if workflow_column and workflow_column != "workflow":
-        df = df.rename(columns={workflow_column: "workflow"})
+        rename_map[workflow_column] = "workflow"
     if metric_column and metric_column != "metric":
-        df = df.rename(columns={metric_column: "metric"})
+        rename_map[metric_column] = "metric"
     if target_column and target_column != "target_label":
-        df = df.rename(columns={target_column: "target_label"})
+        rename_map[target_column] = "target_label"
     if plot_kind_column and plot_kind_column != "plot_kind":
-        df = df.rename(columns={plot_kind_column: "plot_kind"})
+        rename_map[plot_kind_column] = "plot_kind"
+
+    if rename_map:
+        df = df.rename(columns=rename_map)
 
     for column in ["workflow", "target_label", "metric", "plot_kind"]:
         if column not in df.columns:
@@ -714,12 +735,19 @@ def select_plot_groups(
     df = df[df["plot_path"].astype(str).str.strip() != ""].copy()
     df = df.drop_duplicates(subset=["plot_path"])
 
+    section_map = {
+        "raw": "Read-level and assembly raw plots",
+        "baseline_adjusted": "Baseline-adjusted plots",
+        "efficiency": "Efficiency plots",
+        "qc": "Quality control",
+    }
+
     df["section"] = [
-        categorise_plot(
+        section_map.get(str(plot_kind), categorise_plot(
             plot_path=str(plot_path),
             metric=str(metric),
             plot_kind=str(plot_kind),
-        )
+        ))
         for plot_path, metric, plot_kind in zip(
             df["plot_path"], df["metric"], df["plot_kind"]
         )
@@ -731,6 +759,7 @@ def select_plot_groups(
         sections[str(section)] = group.to_dict(orient="records")
 
     return sections
+
 
 
 def relative_href(target_path: Path, from_dir: Path) -> str:
@@ -811,15 +840,67 @@ def create_experiment_plots(
     Returns:
         Manifest DataFrame for generated report-specific plots.
     """
+    if combined_long.empty:
+        return pd.DataFrame(
+            columns=["plot_path", "workflow", "target_label", "metric", "plot_kind"]
+        )
+
+    df = combined_long.copy()
+
+    workflow_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["workflow", "workflow_type"],
+    )
+    target_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["target_label"],
+    )
+    metric_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["metric", "metric_name"],
+    )
+    spike_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["spike_n", "total_spike_n", "spike_level", "n_reads_spiked"],
+    )
+    value_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["value", "metric_value", "observed_value", "count"],
+    )
+    replicate_column = get_first_existing_column(
+        dataframe=df,
+        candidates=["replicate", "rep"],
+    )
+
+    rename_map = {}
+    if workflow_column and workflow_column != "workflow":
+        rename_map[workflow_column] = "workflow"
+    if target_column and target_column != "target_label":
+        rename_map[target_column] = "target_label"
+    if metric_column and metric_column != "metric":
+        rename_map[metric_column] = "metric"
+    if spike_column and spike_column != "spike_n":
+        rename_map[spike_column] = "spike_n"
+    if value_column and value_column != "value":
+        rename_map[value_column] = "value"
+    if replicate_column and replicate_column != "replicate":
+        rename_map[replicate_column] = "replicate"
+
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
     required_cols = {"workflow", "target_label", "metric", "spike_n", "value"}
-    if combined_long.empty or not required_cols.issubset(combined_long.columns):
+    if not required_cols.issubset(df.columns):
+        print(
+            "[WARN] create_experiment_plots(): missing required columns. "
+            f"Observed columns: {', '.join(df.columns)}"
+        )
         return pd.DataFrame(
             columns=["plot_path", "workflow", "target_label", "metric", "plot_kind"]
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    df = combined_long.copy()
     df["spike_n"] = pd.to_numeric(df["spike_n"], errors="coerce")
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     if "replicate" in df.columns:
@@ -828,6 +909,7 @@ def create_experiment_plots(
         df["replicate"] = math.nan
 
     df = df.dropna(subset=["spike_n", "value"])
+
     manifests: list[dict[str, str]] = []
 
     grouped = df.groupby(["workflow", "target_label", "metric"], dropna=False)
@@ -843,9 +925,13 @@ def create_experiment_plots(
             continue
 
         baseline_rows = summary_df.loc[summary_df["spike_n"] == 0, "mean"]
-        baseline_value = float(baseline_rows.iloc[0]) if not baseline_rows.empty else 0.0
+        baseline_value = (
+            float(baseline_rows.iloc[0]) if not baseline_rows.empty else 0.0
+        )
         summary_df["delta_from_baseline"] = summary_df["mean"] - baseline_value
-        summary_df["detected_above_baseline"] = summary_df["delta_from_baseline"] > 0
+        summary_df["detected_above_baseline"] = (
+            summary_df["delta_from_baseline"] > 0
+        )
 
         safe_stub = re.sub(
             pattern=r"[^A-Za-z0-9._-]+",
@@ -853,7 +939,6 @@ def create_experiment_plots(
             string=f"{workflow}__{target_label}__{metric}",
         ).strip("_")
 
-        # Plot 1: observed value vs spike_n
         fig, ax = plt.subplots(figsize=(7.5, 4.5))
         ax.plot(summary_df["spike_n"], summary_df["mean"], marker="o")
         ax.fill_between(
@@ -881,7 +966,6 @@ def create_experiment_plots(
             }
         )
 
-        # Plot 2: delta from baseline
         fig, ax = plt.subplots(figsize=(7.5, 4.5))
         ax.plot(summary_df["spike_n"], summary_df["delta_from_baseline"], marker="o")
         ax.axhline(0, linestyle="--")
@@ -903,9 +987,11 @@ def create_experiment_plots(
             }
         )
 
-        # Plot 3: detected yes/no across spike levels
         fig, ax = plt.subplots(figsize=(7.5, 2.8))
-        y_vals = [1 if value else 0 for value in summary_df["detected_above_baseline"]]
+        y_vals = [
+            1 if value else 0
+            for value in summary_df["detected_above_baseline"]
+        ]
         ax.plot(summary_df["spike_n"], y_vals, marker="o")
         ax.set_yticks([0, 1])
         ax.set_yticklabels(["No", "Yes"])
@@ -1398,7 +1484,7 @@ def build_html_report(
       Start with the executive summary and detection overview. Then use the
       experiment-level plots to judge whether observed signal tracks the number
       of spiked reads. Detailed tables and discovered outputs are provided
-      further नीचे for audit and interpretation.
+      further below for audit and interpretation.
     </div>
 
     <section class="report-section">
