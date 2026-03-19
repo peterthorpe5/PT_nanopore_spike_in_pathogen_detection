@@ -951,6 +951,29 @@ def style_worksheet(worksheet) -> None:
         worksheet.column_dimensions[get_column_letter(column_cells[0].column)].width = width
 
 
+def normalise_excel_value(value):
+    """Convert values into an Excel-safe representation.
+
+    Args:
+        value: Input cell value.
+
+    Returns:
+        Excel-safe value.
+    """
+    if pd.isna(value):
+        return None
+
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+
+    if isinstance(value, (list, dict, set, tuple)):
+        return str(value)
+
+    return value
+
 
 def dataframe_to_excel_sheet(workbook: Workbook, sheet_name: str, dataframe: pd.DataFrame) -> None:
     """Write a DataFrame to a workbook sheet and apply formatting.
