@@ -901,20 +901,58 @@ def style_worksheet(worksheet) -> None:
 
 
 
-def dataframe_to_excel_sheet(workbook: Workbook, sheet_name: str, dataframe: pd.DataFrame) -> None:
-    """Write a DataFrame to a workbook sheet and apply formatting."""
-    worksheet = workbook.create_sheet(title=sheet_name[:31])
-    if dataframe.empty:
-        worksheet.append(["no_data"])
-        style_worksheet(worksheet)
-        return
+
+def normalise_excel_value(value):
+    """Convert values into an Excel-safe representation.
+
+    Args:
+        value: Input cell value.
+
+    Returns:
+        Excel-safe value.
+    """
+    if pd.isna(value):
+        return None
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    if isinstance(value, (list, dict, set, tuple)):
+        return str(value)
+    return value
+
+
+def dataframe_to_excel_sheet(workbook, sheet_name, dataframe):
+    """Write a pandas DataFrame to a formatted Excel worksheet.
+
+    Args:
+        workbook: OpenPyXL workbook object.
+        sheet_name: Name of the worksheet.
+        dataframe: DataFrame to write.
+
+    Returns:
+        None.
+    """
+    worksheet = workbook.create_sheet(title=sheet_name)
+
+    header_fill = PatternFill("solid", fgColor="1F4E79")
+    header_font = Font(bold=True, color="FFFFFF")
+    header_align = Alignment(vertical="center", wrap_text=True)
 
     worksheet.append(list(dataframe.columns))
-    for row in dataframe.itertuples(index=False, name=None):
-        worksheet.append(list(row))
 
-    style_worksheet(worksheet)
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
 
+    for _, row in dataframe.iterrows():
+        safe_row = [normalise_excel_value(value=value) for value in row]
+        worksheet.append(safe_row)
+
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = worksheet.dimensions
 
 
 def write_excel_workbook(
