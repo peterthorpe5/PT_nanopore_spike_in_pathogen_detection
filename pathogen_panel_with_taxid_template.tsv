@@ -1,4 +1,5 @@
 fasta	label	taxid
-/path/to/genome1.fna	Plasmodium vivax	5855
-/path/to/genome2.fna	Plasmodium falciparum	5833
-/path/to/genome3.fna	Escherichia coli	562
+/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/GCA_014843685.1_ASM1484368v1_genomic.fna	Plasmodium vivax	5855
+/home/pthorpe001/data/project_back_up_2024/kracken/all_plasmodium_genomes/GCA_001861195.1_383_1_genomic.fna	Plasmodium falciparum	5833
+/home/pthorpe001/data/project_back_up_2024/kracken/all_plasmodium_genomes/GCA_023845545.1_PKCLINC047_genomic.fna	Plasmodium knowlesi	5850
+
