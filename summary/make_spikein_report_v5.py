@@ -732,7 +732,9 @@ def select_plot_groups(
         if column not in df.columns:
             df[column] = ""
 
+    df = df[df["plot_path"].notna()].copy()
     df = df[df["plot_path"].astype(str).str.strip() != ""].copy()
+    df = df[df["plot_path"].astype(str).str.lower() != "nan"].copy()
     df = df.drop_duplicates(subset=["plot_path"])
 
     section_map = {
@@ -1137,8 +1139,20 @@ def make_plot_sections_html(
         plots = plot_sections[section_name]
         plots_html: list[str] = []
         for record in plots:
-            plot_path = Path(record["plot_path"])
+            raw_plot_path = record.get("plot_path", "")
+
+            if raw_plot_path is None:
+                continue
+            if isinstance(raw_plot_path, float) and math.isnan(raw_plot_path):
+                continue
+
+            raw_plot_path = str(raw_plot_path).strip()
+            if raw_plot_path == "" or raw_plot_path.lower() == "nan":
+                continue
+
+            plot_path = Path(raw_plot_path)
             href = relative_href(target_path=plot_path, from_dir=summary_dir)
+
             caption_bits = [
                 bit for bit in [
                     record.get("workflow", ""),
@@ -1148,13 +1162,14 @@ def make_plot_sections_html(
                 ] if bit
             ]
             caption = " | ".join(caption_bits)
+
             plots_html.append(
                 f"""
                 <figure class="plot-card">
-                  <a href="{html_escape(href)}" target="_blank">
+                <a href="{html_escape(href)}" target="_blank">
                     <img src="{html_escape(href)}" alt="{html_escape(caption)}">
-                  </a>
-                  <figcaption>{html_escape(caption)}</figcaption>
+                </a>
+                <figcaption>{html_escape(caption)}</figcaption>
                 </figure>
                 """
             )
@@ -1176,8 +1191,20 @@ def make_plot_sections_html(
 
         plots_html: list[str] = []
         for record in plots:
-            plot_path = Path(record["plot_path"])
+            raw_plot_path = record.get("plot_path", "")
+
+            if raw_plot_path is None:
+                continue
+            if isinstance(raw_plot_path, float) and math.isnan(raw_plot_path):
+                continue
+
+            raw_plot_path = str(raw_plot_path).strip()
+            if raw_plot_path == "" or raw_plot_path.lower() == "nan":
+                continue
+
+            plot_path = Path(raw_plot_path)
             href = relative_href(target_path=plot_path, from_dir=summary_dir)
+
             caption_bits = [
                 bit for bit in [
                     record.get("workflow", ""),
@@ -1187,13 +1214,14 @@ def make_plot_sections_html(
                 ] if bit
             ]
             caption = " | ".join(caption_bits)
+
             plots_html.append(
                 f"""
                 <figure class="plot-card">
-                  <a href="{html_escape(href)}" target="_blank">
+                <a href="{html_escape(href)}" target="_blank">
                     <img src="{html_escape(href)}" alt="{html_escape(caption)}">
-                  </a>
-                  <figcaption>{html_escape(caption)}</figcaption>
+                </a>
+                <figcaption>{html_escape(caption)}</figcaption>
                 </figure>
                 """
             )
