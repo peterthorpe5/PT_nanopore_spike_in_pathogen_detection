@@ -77,7 +77,6 @@ def read_tsv(path: Path) -> pd.DataFrame:
     """
     return pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
 
-
 def coerce_numeric_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
     """Convert numeric-looking columns to numeric dtype where possible.
 
@@ -88,26 +87,33 @@ def coerce_numeric_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
         DataFrame with numeric-looking columns coerced where possible.
     """
     df = dataframe.copy()
+    skip_columns = {
+        "run_path",
+        "run_dir",
+        "run_directory",
+        "run_root",
+        "source_dir",
+        "summary_path",
+        "source_file",
+        "plot_path",
+        "workflow",
+        "run_name",
+        "target_label",
+        "plot_kind",
+        "metric",
+        "issue",
+        "file_path",
+    }
+
     for column in df.columns:
-        if column in {
-            "run_path",
-            "summary_path",
-            "source_file",
-            "plot_path",
-            "workflow",
-            "run_name",
-            "target_label",
-            "plot_kind",
-            "metric",
-            "issue",
-            "file_path",
-        }:
+        if column in skip_columns:
             continue
+
         try:
             df[column] = pd.to_numeric(df[column])
         except Exception:
             pass
-        df[column] = converted
+
     return df
 
 
