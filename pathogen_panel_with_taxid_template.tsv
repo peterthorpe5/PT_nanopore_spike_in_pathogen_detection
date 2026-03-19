@@ -1,0 +1,4 @@
+fasta	label	taxid
+/path/to/genome1.fna	Plasmodium vivax	5855
+/path/to/genome2.fna	Plasmodium falciparum	5833
+/path/to/genome3.fna	Escherichia coli	562
