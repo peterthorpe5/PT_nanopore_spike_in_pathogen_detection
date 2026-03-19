@@ -6,7 +6,7 @@
 #$ -jc long
 #$ -mods l_hard mfree 240G
 #$ -adds l_hard h_vmem 240G
-#$ -N spike_multi_mm
+#$ -N MMspike_multi_mm
 
 set -euo pipefail
 
