@@ -45,14 +45,17 @@ MIN_MAPQ="${MIN_MAPQ:-15}"
 MIN_ALIGN_LEN="${MIN_ALIGN_LEN:-500}"
 
 for x in python3 minimap2 samtools kraken2 bamToBed read_analysis.py simulator.py; do require_exe "$x"; done
-for f in "${SAMPLE_FASTQ_PY}" "${BUILD_MIXED_FASTQ_PY}" "${COMBINE_NANOSIM_FASTQ_PY}" "${SUMMARISE_KRAKEN_PY}" "${COUNT_BED_HITS_PY}" "${REAL_FASTQ}" "${PATHOGEN_CONFIG_TSV}" "${MINIMAP_DB_GZ}"; do require_file "$f"; done
+
+for f in "${SAMPLE_FASTQ_PY}" "${BUILD_MIXED_FASTQ_PY}" "${COMBINE_NANOSIM_FASTQ_PY}" "${SUMMARISE_KRAKEN_PY}" "${COUNT_BED_HITS_PY}" "${REAL_FASTQ}" "${PATHOGEN_CONFIG_TSV}" "${MINIMAP_DB_FASTA}"; do require_file "$f"; done
 require_dir "${KRAKEN_DB_DIR}"
 mkdir -p "${OUT_DIR}"
 
 mapfile -t PANEL_LINES < <(awk 'BEGIN{FS="\t"} NR>1 && NF>=2 {print $1"\t"$2}' "${PATHOGEN_CONFIG_TSV}")
 [[ ${#PANEL_LINES[@]} -gt 0 ]] || { log_error "No pathogen entries found in ${PATHOGEN_CONFIG_TSV}"; exit 1; }
 
-TRAIN_FASTQ="${OUT_DIR}/train_reads.fastq.gz"; NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"; MINIMAP_DB_FASTA="${OUT_DIR}/plas_outgrps_genomes_Hard_MASKED.fasta"; SUMMARY_TSV="${OUT_DIR}/spikein_multi_summary.tsv"; WORK_FASTQ="${DEPLETED_FASTQ}"
+
+TRAIN_FASTQ="${OUT_DIR}/train_reads.fastq.gz"; NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"; SUMMARY_TSV="${OUT_DIR}/spikein_multi_summary.tsv"; WORK_FASTQ="${DEPLETED_FASTQ}"
+
 python3 "${SAMPLE_FASTQ_PY}" --fastq_gz "${REAL_FASTQ}" --n_reads "${TRAIN_READS_N}" --seed 1 --out_fastq_gz "${TRAIN_FASTQ}"
 if [[ ! -s "${MONKEY_SMALL_FASTA}" ]]; then gzip -cd "${MONKEY_SMALL_GZ}" > "${MONKEY_SMALL_FASTA}"; fi
 read_analysis.py genome --read "${TRAIN_FASTQ}" --ref_g "${MONKEY_SMALL_FASTA}" --output "${NS_MODEL_PREFIX}" --num_threads "${THREADS}" --fastq
