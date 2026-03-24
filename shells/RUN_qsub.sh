@@ -1,46 +1,56 @@
-# 1. Move to your working directory
+#!/usr/bin/env bash
+
+set -euo pipefail
+
 cd /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity
 
-# 2. Define and export the base repository path
 export REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"
+export SHELLS_DIR="${REPO_DIR}/shells"
+export CONFIG_DIR="${REPO_DIR}/configs"
 
-# 3. Submit the jobs using -V to pass the exported environment variables
-# Note: For jobs requiring specific configs, we export the config just before the qsub call.
+log_info() {
+    printf '[INFO] %s\n' "$*"
+}
 
-# --- Single Read Level ---
-qsub -V "$REPO_DIR//run_spikein_single_readlevel.sh"
+submit_job() {
+    local script_path="$1"
+    if [[ ! -f "${script_path}" ]]; then
+        printf '[ERROR] Missing script: %s\n' "${script_path}" >&2
+        exit 1
+    fi
+    log_info "Submitting ${script_path}"
+    qsub -V "${script_path}"
+}
 
-qsub -V "$REPO_DIR//run_spikein_single_flye_medaka.sh"
+log_info "Repository: ${REPO_DIR}"
+log_info "Shells dir: ${SHELLS_DIR}"
+log_info "Configs dir: ${CONFIG_DIR}"
 
-# --- Multi Read Level (with specific configs) ---
-export PATHOGEN_CONFIG_TSV="$REPO_DIR/configs/pathogen_panel_2.tsv"
-qsub -V "$REPO_DIR//run_spikein_multi_readlevel.sh"
+# Single-genome workflows
+submit_job "${SHELLS_DIR}/run_spikein_single_readlevel.sh"
+submit_job "${SHELLS_DIR}/run_spikein_single_flye.sh"
+submit_job "${SHELLS_DIR}/run_spikein_single_flye_medaka.sh"
+submit_job "${SHELLS_DIR}/run_spikein_single_readlevel_metamaps.sh"
 
-export PATHOGEN_CONFIG_TSV="$REPO_DIR/configs/pathogen_panel_3.tsv"
-qsub -V "$REPO_DIR//run_spikein_multi_flye_medaka.sh"
+# Shuffled control workflows
+submit_job "${SHELLS_DIR}/run_spikein_shuffled_readlevel.sh"
+submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye.sh"
+submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye_medaka.sh"
 
-# --- Shuffled Read Level ---
-qsub -V "$REPO_DIR//run_spikein_shuffled_readlevel.sh"
+# Multi-genome workflows: 2-genome panel
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
+log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
 
-qsub -V "$REPO_DIR//run_spikein_shuffled_flye_medaka.sh"
+# Multi-genome workflows: 3-genome panel
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
+log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
 
-
-
-# --- Melon Single ---
-qsub -V "$REPO_DIR//melon/run_melon_single.sh"
-
-# --- Melon Multi ---
-export PATHOGEN_CONFIG_TSV="$REPO_DIR/configs/pathogen_panel_2.tsv"
-qsub -V "$REPO_DIR//melon/run_melon_mixed.sh"
-
-# --- Melon Multi ---
-export PATHOGEN_CONFIG_TSV="$REPO_DIR/configs/pathogen_panel_3.tsv"
-qsub -V "$REPO_DIR//melon/run_melon_mixed.sh"
-
-
-# --- MetaMaps ---
-export PATHOGEN_CONFIG_TSV="$REPO_DIR/pathogen_panel_with_taxid_template.tsv"
-qsub -V "$REPO_DIR/run_spikein_multi_readlevel_metamaps.sh"
-
-qsub -V "$REPO_DIR/run_spikein_single_readlevel_metamaps.sh"
-
+log_info "All qsub commands submitted"
