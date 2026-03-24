@@ -17,6 +17,28 @@ MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared
 MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
 METAMAPS_DB_DIR_DEFAULT="${METAMAPS_DB_DIR_DEFAULT:-${DB_BASE}/metamaps/current/custom_metamaps_db/custom_metamaps_db}"
 
+
+# Core database paths
+DB_BASE="${DB_BASE:-/home/pthorpe001/data/databases}"
+KRAKEN_DB_DIR_DEFAULT="${KRAKEN_DB_DIR_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
+MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.fa}"
+MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
+METAMAPS_DB_DIR_DEFAULT="${METAMAPS_DB_DIR_DEFAULT:-${DB_BASE}/metamaps/current/custom_metamaps_db/custom_metamaps_db}"
+
+# Core input data paths
+REAL_FASTQ_DEFAULT="${REAL_FASTQ_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
+DEPLETED_FASTQ_DEFAULT="${DEPLETED_FASTQ_DEFAULT:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/MRC1023_AmM008WB.depleted.fastq.gz}"
+
+# Host / depletion references
+SMALL_MONKEY_REF_DEFAULT="${SMALL_MONKEY_REF_DEFAULT:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/Mnem_1.0.fna.gz}"
+DEPLETION_REF_DEFAULT="${DEPLETION_REF_DEFAULT:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/data/host_plus_plasmo_depletion.fasta}"
+
+# Shared defaults
+THREADS_DEFAULT="${THREADS_DEFAULT:-12}"
+SPIKE_LEVELS_DEFAULT="${SPIKE_LEVELS_DEFAULT:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"
+REPLICATES_DEFAULT="${REPLICATES_DEFAULT:-3}"
+
+
 # Common external inputs
 REAL_FASTQ_DEFAULT="${REAL_FASTQ_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
 MONKEY_SMALL_GZ_DEFAULT="${MONKEY_SMALL_GZ_DEFAULT:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/genome/GCF_000956065.1_Mnem_1.0_genomic.fna.gz}"
