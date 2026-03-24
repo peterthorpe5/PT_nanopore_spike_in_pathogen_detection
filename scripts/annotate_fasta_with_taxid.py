@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Rewrite FASTA headers with Kraken-style taxon annotations for MetaMaps DB builds."""
+"""Rewrite FASTA headers with taxon annotations for MetaMaps database builds."""
 
 from __future__ import annotations
 
 import argparse
+import gzip
 from pathlib import Path
+from typing import TextIO
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input_fasta",
         required=True,
-        help="Input FASTA file.",
+        help="Input FASTA file, plain text or gzipped.",
     )
     parser.add_argument(
         "--taxid",
@@ -35,13 +37,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def open_maybe_gzip(path: str) -> TextIO:
+    """Open a plain-text or gzipped FASTA file for reading."""
+    if str(path).endswith(".gz"):
+        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
+    return open(path, "rt", encoding="utf-8", errors="replace")
+
+
 def rewrite_headers(input_fasta: str, taxid: int, out_fasta: str) -> int:
     """Rewrite FASTA headers and return the number of sequences processed."""
     n_sequences = 0
     output_path = Path(out_fasta)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(input_fasta, "rt", encoding="utf-8", errors="replace") as in_handle, open(
+    with open_maybe_gzip(input_fasta) as in_handle, open(
         output_path, "wt", encoding="utf-8"
     ) as out_handle:
         for line in in_handle:

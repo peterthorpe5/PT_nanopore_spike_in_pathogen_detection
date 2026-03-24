@@ -1,0 +1,1 @@
+Place pipeline_paths.sh in your repo under configs/pipeline_paths.sh, and place the refactored run_spikein_*.sh files in shells/. Adjust METAMAPS_DB_DIR_DEFAULT in pipeline_paths.sh to your final timestamped MetaMaps DB, or make a current symlink.
