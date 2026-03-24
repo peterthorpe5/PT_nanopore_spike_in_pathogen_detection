@@ -44,6 +44,7 @@ run_medaka_consensus(){
 }
 
 if [[ -n "${REPO_DIR:-}" ]]; then REPO_DIR="${REPO_DIR}"; elif [[ -n "${SGE_O_WORKDIR:-}" ]]; then REPO_DIR="${SGE_O_WORKDIR}"; else REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"; fi
+source "${REPO_DIR}/configs/pipeline_paths.sh"
 PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"
 CONFIG_DIR="${CONFIG_DIR:-${REPO_DIR}/configs}"
 PATHOGEN_CONFIG_TSV="${PATHOGEN_CONFIG_TSV:-${DEFAULT_PATHOGEN_PANEL_3}}"
@@ -100,7 +101,7 @@ done
 
 if [[ -s "${WORK_FASTQ}" ]]; then :; elif [[ "${DO_HOST_DEPLETION}" == "true" ]]; then minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - | samtools fastq -@ "${THREADS}" - | gzip -c > "${WORK_FASTQ}"; else cp "${REAL_FASTQ}" "${WORK_FASTQ}"; fi
 
-source "${REPO_DIR}/configs/pipeline_paths.sh"
+
 
 header='replicate	spike_n	total_spiked_reads	mixed_fastq_gz	flye_out_dir	flye_assembly_fasta	polished_assembly_fasta	contig_count	total_bases	kraken_report'
 for line in "${PANEL_LINES[@]}"; do target_label="$(printf '%s' "${line}" | cut -f2)"; safe_label="$(printf '%s' "${target_label}" | tr ' ' '_' | tr '/' '_')"; header+="	kraken_${safe_label}_contigs"; done

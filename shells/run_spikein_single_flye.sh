@@ -17,6 +17,7 @@ require_dir() { [[ -d "$1" ]] || { log_error "Required directory not found: $1";
 require_exe() { command -v "$1" >/dev/null 2>&1 || { log_error "Required executable not found on PATH: $1"; exit 1; }; }
 
 if [[ -n "${REPO_DIR:-}" ]]; then REPO_DIR="${REPO_DIR}"; elif [[ -n "${SGE_O_WORKDIR:-}" ]]; then REPO_DIR="${SGE_O_WORKDIR}"; else REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"; fi
+source "${REPO_DIR}/configs/pipeline_paths.sh"
 PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"
 SAMPLE_FASTQ_PY="${PY_SCRIPTS_DIR}/sample_fastq.py"
 BUILD_MIXED_FASTQ_PY="${PY_SCRIPTS_DIR}/build_mixed_fastq.py"
@@ -63,7 +64,7 @@ gzip -c "${SIM_POOL_FASTQ}" > "${SIM_POOL_FASTQ_GZ}"
 
 if [[ -s "${WORK_FASTQ}" ]]; then :; elif [[ "${DO_HOST_DEPLETION}" == "true" ]]; then minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - | samtools fastq -@ "${THREADS}" - | gzip -c > "${WORK_FASTQ}"; else cp "${REAL_FASTQ}" "${WORK_FASTQ}"; fi
 
-source "${REPO_DIR}/configs/pipeline_paths.sh"
+
 
 printf 'replicate\tspike_n\tmixed_fastq_gz\tflye_out_dir\tassembly_fasta\tcontig_count\ttotal_bases\tkraken_report\tkraken_classified_contigs\tkraken_target_contigs\n' > "${SUMMARY_TSV}"
 

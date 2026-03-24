@@ -15,6 +15,9 @@ require_file(){ [[ -f "$1" ]] || { log_error "Required file not found: $1"; exit
 require_dir(){ [[ -d "$1" ]] || { log_error "Required directory not found: $1"; exit 1; }; }
 require_exe(){ command -v "$1" >/dev/null 2>&1 || { log_error "Required executable not found on PATH: $1"; exit 1; }; }
 if [[ -n "${REPO_DIR:-}" ]]; then REPO_DIR="${REPO_DIR}"; elif [[ -n "${SGE_O_WORKDIR:-}" ]]; then REPO_DIR="${SGE_O_WORKDIR}"; else REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"; fi
+
+source "${REPO_DIR}/configs/pipeline_paths.sh"
+
 PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"; CONFIG_DIR="${CONFIG_DIR:-${REPO_DIR}/configs}"; PATHOGEN_CONFIG_TSV="${PATHOGEN_CONFIG_TSV:-${DEFAULT_PATHOGEN_PANEL_3}}"
 SAMPLE_FASTQ_PY="${PY_SCRIPTS_DIR}/sample_fastq.py"; BUILD_MIXED_FASTQ_PY="${PY_SCRIPTS_DIR}/build_mixed_fastq.py"; COMBINE_NANOSIM_FASTQ_PY="${PY_SCRIPTS_DIR}/combine_nanosim_fastq.py"; SUMMARISE_KRAKEN_PY="${PY_SCRIPTS_DIR}/summarise_kraken_report.py"; DEDUP_FASTQ_NAMES_PY="${PY_SCRIPTS_DIR}/dedup_fastq_names.py"; ASSEMBLY_STATS_PY="${PY_SCRIPTS_DIR}/assembly_stats.py"
 REAL_FASTQ="${REAL_FASTQ:-${REAL_FASTQ_DEFAULT}}"; MONKEY_SMALL_GZ="${MONKEY_SMALL_GZ:-${MONKEY_SMALL_GZ_DEFAULT}}"; MONKEY_SMALL_FASTA="${MONKEY_SMALL_FASTA:-${MONKEY_SMALL_FASTA_DEFAULT}}"; DEPLETION_REF_FASTA="${DEPLETION_REF_FASTA:-${DEPLETION_REF_FASTA_DEFAULT}}"; DEPLETED_FASTQ="${DEPLETED_FASTQ:-${DEPLETED_FASTQ_DEFAULT}}"; KRAKEN_DB_DIR="${KRAKEN_DB_DIR:-${KRAKEN_DB_DIR_DEFAULT}}"; OUT_DIR="${OUT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_flye_$(date +%Y%m%d_%H%M%S)}"; THREADS="${THREADS:-12}"; TRAIN_READS_N="${TRAIN_READS_N:-200000}"; SIM_POOL_N="${SIM_POOL_N:-20000}"; SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"; REPLICATES="${REPLICATES:-3}"; DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
