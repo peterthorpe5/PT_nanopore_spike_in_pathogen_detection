@@ -38,6 +38,8 @@ OUT_MANIFEST="${OUT_MANIFEST:-${RUNS_DIR}/krona_manifest.tsv}"
 UPDATE_TAXONOMY="${UPDATE_TAXONOMY:-false}"
 
 require_exe ktImportTaxonomy
+require_exe cut
+require_exe find
 
 if [[ "${UPDATE_TAXONOMY}" == "true" ]]; then
     require_exe ktUpdateTaxonomy.sh
@@ -46,7 +48,7 @@ if [[ "${UPDATE_TAXONOMY}" == "true" ]]; then
 fi
 
 mkdir -p "$(dirname "${OUT_MANIFEST}")"
-printf 'source_tsv\toutput_html\n' > "${OUT_MANIFEST}"
+printf 'source_tsv\tkrona_input_tsv\toutput_html\n' > "${OUT_MANIFEST}"
 
 mapfile -t KRKN_FILES < <(
     find "${RUNS_DIR}" -type f \
@@ -67,17 +69,19 @@ for kraken_tsv in "${KRKN_FILES[@]}"; do
     mkdir -p "${krona_dir}"
 
     base_name="$(basename "${kraken_tsv}" .tsv)"
+    krona_input="${krona_dir}/${base_name}.krona_input.tsv"
     out_html="${krona_dir}/${base_name}.krona.html"
 
-    log_info "Creating Krona plot for ${kraken_tsv}"
+    log_info "Preparing Krona input for ${kraken_tsv}"
 
+    cut -f 2,3 "${kraken_tsv}" > "${krona_input}"
+
+    log_info "Creating Krona plot ${out_html}"
     ktImportTaxonomy \
-        -q 2 \
-        -t 3 \
         -o "${out_html}" \
-        "${kraken_tsv}"
+        "${krona_input}"
 
-    printf '%s\t%s\n' "${kraken_tsv}" "${out_html}" >> "${OUT_MANIFEST}"
+    printf '%s\t%s\t%s\n' "${kraken_tsv}" "${krona_input}" "${out_html}" >> "${OUT_MANIFEST}"
 done
 
 log_info "Done"
