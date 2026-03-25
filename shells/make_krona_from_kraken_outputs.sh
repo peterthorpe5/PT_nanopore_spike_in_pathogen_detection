@@ -78,6 +78,7 @@ for kraken_tsv in "${KRKN_FILES[@]}"; do
 
     log_info "Creating Krona plot ${out_html}"
     ktImportTaxonomy \
+        -tax /home/pthorpe001/data/databases/krona_taxonomy \
         -o "${out_html}" \
         "${krona_input}"
 
