@@ -4,6 +4,8 @@ set -euo pipefail
 
 cd /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity
 
+conda activate kraken16s
+
 export REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"
 export SHELLS_DIR="${REPO_DIR}/shells"
 export CONFIG_DIR="${REPO_DIR}/configs"
@@ -30,7 +32,6 @@ log_info "Configs dir: ${CONFIG_DIR}"
 submit_job "${SHELLS_DIR}/run_spikein_single_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye_medaka.sh"
-submit_job "${SHELLS_DIR}/run_spikein_single_readlevel_metamaps.sh"
 
 # Shuffled control workflows
 submit_job "${SHELLS_DIR}/run_spikein_shuffled_readlevel.sh"
@@ -43,7 +44,7 @@ log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
-submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
+
 
 # Multi-genome workflows: 3-genome panel
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
@@ -51,6 +52,20 @@ log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
+
+
+# Metamaps workflows
+wait 
+
+conda activate metamaps
+
+wait
+
+submit_job "${SHELLS_DIR}/run_spikein_single_readlevel_metamaps.sh"
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
 
 log_info "All qsub commands submitted"

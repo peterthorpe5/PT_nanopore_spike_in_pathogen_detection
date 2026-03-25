@@ -8,6 +8,24 @@
 #$ -adds l_hard h_vmem 64G
 #$ -N build_metamaps_db
 
+
+### MUCH erroring --- this is the current method, rest of script wont work
+> python3 scripts/prepare_kraken_library_for_metamaps.py \
+  --input_fastas \
+    /home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal/library/bacteria/library.fna \
+    /home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal/library/library.fna \
+    /home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal/library/viral/library.fna \
+  --taxonomy_dir /home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal/taxonomy \
+  --out_dir /home/pthorpe001/data/databases/metamaps_from_kraken_shared
+
+
+  buildDB.pl \
+  --DB /home/pthorpe001/data/databases/metamaps_from_kraken_shared/custom_metamaps_db \
+  --FASTAs /home/pthorpe001/data/databases/metamaps_from_kraken_shared/combined_input.fa \
+  --taxonomy /home/pthorpe001/data/databases/metamaps_from_kraken_shared/taxonomy
+
+  #############################
+# end of block that actually works, below is old code that was trying to do the same thing but with more customisation and failed due to some issue with the buildDB.pl script (probably related to the FASTA headers or something)
 set -euo pipefail
 
 log_info() {
