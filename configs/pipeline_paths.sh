@@ -15,7 +15,6 @@ DB_BASE="${DB_BASE:-/home/pthorpe001/data/databases}"
 KRAKEN_DB_DIR_DEFAULT="${KRAKEN_DB_DIR_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.fa}"
 MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
-METAMAPS_DB_DIR_DEFAULT="${METAMAPS_DB_DIR_DEFAULT:-${DB_BASE}/metamaps/current/custom_metamaps_db/custom_metamaps_db}"
 
 
 # Core database paths
@@ -23,7 +22,7 @@ DB_BASE="${DB_BASE:-/home/pthorpe001/data/databases}"
 KRAKEN_DB_DIR_DEFAULT="${KRAKEN_DB_DIR_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.fa}"
 MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
-METAMAPS_DB_DIR_DEFAULT="${METAMAPS_DB_DIR_DEFAULT:-${DB_BASE}/metamaps/current/custom_metamaps_db/custom_metamaps_db}"
+
 
 # Core input data paths
 REAL_FASTQ_DEFAULT="${REAL_FASTQ_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
@@ -69,7 +68,7 @@ DB_BASE="${DB_BASE:-/home/pthorpe001/data/databases}"
 KRAKEN_DB_DIR_DEFAULT="${KRAKEN_DB_DIR_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
 MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.fa}"
 MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
-METAMAPS_DB_DIR_DEFAULT="${METAMAPS_DB_DIR_DEFAULT:-${DB_BASE}/metamaps/current/custom_metamaps_db/custom_metamaps_db}"
+METAMAPS_DB_DIR_DEFAULT="${METAMAPS_DB_DIR_DEFAULT:-/home/pthorpe001/data/databases/metamaps_from_kraken_shared/custom_metamaps_db}"
 
 
 # Backwards-compatibility alias for older shells still expecting a gz variable
