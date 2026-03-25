@@ -33,6 +33,7 @@ else
     REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"
 fi
 
+KRONA_TAX_DIR="${KRONA_TAX_DIR:-/home/pthorpe001/data/databases/krona_taxonomy}"
 RUNS_DIR="${RUNS_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs}"
 OUT_MANIFEST="${OUT_MANIFEST:-${RUNS_DIR}/krona_manifest.tsv}"
 UPDATE_TAXONOMY="${UPDATE_TAXONOMY:-false}"

@@ -642,7 +642,8 @@ def main() -> None:
                 parent_taxid=old_taxid,
                 rest=rest,
             )
-            new_header = f">kraken:taxid|{new_taxid}|{rest}"
+            new_header = f">kraken:taxid|{new_taxid}|{accession}"
+            #new_header = f">kraken:taxid|{new_taxid}|{rest}"
 
             records.append(
                 SyntheticRecord(
