@@ -17,7 +17,7 @@ Compared with earlier versions, this script also:
 - includes definitions of all reported metrics
 - includes notes on how to interpret the plots in the main HTML report
 - ranks methods in a more useful order for detection benchmarking
-- adds a species-centred summary table
+- adds a panel-level species summary table
 - adds a plain-language interpretation column
 
 Default interpretation
@@ -32,27 +32,6 @@ Default detection rule
 Detection is called when the observed metric value is greater than or equal
 to the method-specific maximum observed negative value, with a floor set by
 --min_detect_value. This is intentionally conservative.
-
-Outputs
--------
-All tables are written as tab-separated files unless otherwise noted.
-
-1. method_performance.tsv
-   One row per workflow / metric / target-label method.
-2. method_performance_compact.tsv
-   A reduced summary table for easier reading in reports.
-3. method_species_summary.tsv
-   Species-centred summary table with plain-language interpretation.
-4. method_performance_by_spike.tsv
-   Detection rates by spike level for each method.
-5. metric_definitions.tsv
-   Definitions of all reported performance statistics.
-6. method_performance.xlsx
-   Formatted Excel workbook with multiple sheets.
-7. method_performance.html
-   Standalone HTML page for review.
-8. method_performance_fragment.html
-   HTML fragment that can be inserted into the main report.
 """
 
 from __future__ import annotations
@@ -258,78 +237,25 @@ REPORT_PLOT_EXPLANATIONS = [
 
 
 def parse_args() -> argparse.Namespace:
-    """
-    Parse command-line arguments.
-
-    Returns
-    -------
-    argparse.Namespace
-        Parsed command-line arguments.
-    """
     parser = argparse.ArgumentParser(
         description=(
             "Build method-level performance summary tables from a combined "
             "long-format spike-in benchmarking table."
         )
     )
-    parser.add_argument(
-        "--combined_long_tsv",
-        required=True,
-        help="Input combined_long.tsv file.",
-    )
-    parser.add_argument(
-        "--out_dir",
-        required=True,
-        help="Output directory for performance tables.",
-    )
+    parser.add_argument("--combined_long_tsv", required=True)
+    parser.add_argument("--out_dir", required=True)
     parser.add_argument(
         "--threshold_mode",
-        choices=[
-            "fixed",
-            "baseline_mean",
-            "baseline_max",
-            "baseline_mean_plus_sd",
-        ],
+        choices=["fixed", "baseline_mean", "baseline_max", "baseline_mean_plus_sd"],
         default="baseline_max",
-        help="Detection threshold strategy. Default: baseline_max",
     )
-    parser.add_argument(
-        "--min_detect_value",
-        type=float,
-        default=1.0,
-        help="Minimum metric value that can count as a detection. Default: 1.0",
-    )
-    parser.add_argument(
-        "--sd_multiplier",
-        type=float,
-        default=2.0,
-        help=(
-            "Standard deviation multiplier for baseline_mean_plus_sd mode. "
-            "Default: 2.0"
-        ),
-    )
+    parser.add_argument("--min_detect_value", type=float, default=1.0)
+    parser.add_argument("--sd_multiplier", type=float, default=2.0)
     return parser.parse_args()
 
 
-def get_first_existing_column(
-    dataframe: pd.DataFrame,
-    candidates: list[str],
-) -> Optional[str]:
-    """
-    Return the first candidate column present in a DataFrame.
-
-    Parameters
-    ----------
-    dataframe : pd.DataFrame
-        Input table.
-    candidates : list[str]
-        Candidate column names.
-
-    Returns
-    -------
-    Optional[str]
-        First matching column name, otherwise None.
-    """
+def get_first_existing_column(dataframe: pd.DataFrame, candidates: list[str]) -> Optional[str]:
     for candidate in candidates:
         if candidate in dataframe.columns:
             return candidate
@@ -337,55 +263,21 @@ def get_first_existing_column(
 
 
 def normalise_combined_long(combined_long: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalise the combined long-format table to a standard schema.
-
-    Parameters
-    ----------
-    combined_long : pd.DataFrame
-        Raw combined long-format table.
-
-    Returns
-    -------
-    pd.DataFrame
-        Normalised table.
-    """
     dataframe = combined_long.copy()
-
     rename_map: dict[str, str] = {}
 
-    workflow_column = get_first_existing_column(
-        dataframe=dataframe,
-        candidates=["workflow", "workflow_type"],
-    )
-    metric_column = get_first_existing_column(
-        dataframe=dataframe,
-        candidates=["metric", "metric_name"],
-    )
-    value_column = get_first_existing_column(
-        dataframe=dataframe,
-        candidates=["value", "metric_value"],
-    )
-    spike_column = get_first_existing_column(
-        dataframe=dataframe,
-        candidates=["spike_n", "spike_n_per_genome"],
-    )
+    workflow_column = get_first_existing_column(dataframe, ["workflow", "workflow_type"])
+    metric_column = get_first_existing_column(dataframe, ["metric", "metric_name"])
+    value_column = get_first_existing_column(dataframe, ["value", "metric_value"])
+    spike_column = get_first_existing_column(dataframe, ["spike_n", "spike_n_per_genome"])
     shuffled_column = get_first_existing_column(
-        dataframe=dataframe,
-        candidates=[
-            "is_shuffled_control_recomputed",
-            "is_shuffled_control",
-        ],
+        dataframe,
+        ["is_shuffled_control_recomputed", "is_shuffled_control"],
     )
+    run_name_column = get_first_existing_column(dataframe, ["run_name"])
 
-    if workflow_column is None:
-        raise ValueError("Could not find workflow column in combined long table.")
-    if metric_column is None:
-        raise ValueError("Could not find metric column in combined long table.")
-    if value_column is None:
-        raise ValueError("Could not find value column in combined long table.")
-    if spike_column is None:
-        raise ValueError("Could not find spike column in combined long table.")
+    if workflow_column is None or metric_column is None or value_column is None or spike_column is None:
+        raise ValueError("Missing one or more required columns in combined long table.")
 
     if workflow_column != "workflow":
         rename_map[workflow_column] = "workflow"
@@ -397,6 +289,8 @@ def normalise_combined_long(combined_long: pd.DataFrame) -> pd.DataFrame:
         rename_map[spike_column] = "spike_n"
     if shuffled_column and shuffled_column != "is_shuffled_control":
         rename_map[shuffled_column] = "is_shuffled_control"
+    if run_name_column and run_name_column != "run_name":
+        rename_map[run_name_column] = "run_name"
 
     if rename_map:
         dataframe = dataframe.rename(columns=rename_map)
@@ -407,54 +301,27 @@ def normalise_combined_long(combined_long: pd.DataFrame) -> pd.DataFrame:
         dataframe["is_shuffled_control"] = False
     if "replicate" not in dataframe.columns:
         dataframe["replicate"] = pd.NA
+    if "run_name" not in dataframe.columns:
+        dataframe["run_name"] = dataframe["workflow"].astype(str)
 
     dataframe["workflow"] = dataframe["workflow"].fillna("unknown").astype(str)
     dataframe["metric"] = dataframe["metric"].fillna("unknown_metric").astype(str)
     dataframe["target_label"] = (
-        dataframe["target_label"]
-        .fillna("single_target")
-        .replace("", "single_target")
-        .astype(str)
+        dataframe["target_label"].fillna("single_target").replace("", "single_target").astype(str)
     )
+    dataframe["run_name"] = dataframe["run_name"].fillna("unknown_run").astype(str)
     dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
     dataframe["spike_n"] = pd.to_numeric(dataframe["spike_n"], errors="coerce")
     dataframe["is_shuffled_control"] = (
-        dataframe["is_shuffled_control"]
-        .fillna(False)
-        .astype(str)
-        .str.lower()
-        .isin(["true", "1", "yes"])
+        dataframe["is_shuffled_control"].fillna(False).astype(str).str.lower().isin(["true", "1", "yes"])
     )
-
     dataframe = dataframe.dropna(subset=["value", "spike_n"]).copy()
-    dataframe["is_positive"] = (
-        (~dataframe["is_shuffled_control"]) & (dataframe["spike_n"] > 0)
-    )
-    dataframe["is_negative"] = (
-        dataframe["is_shuffled_control"] | (dataframe["spike_n"] == 0)
-    )
+    dataframe["is_positive"] = (~dataframe["is_shuffled_control"]) & (dataframe["spike_n"] > 0)
+    dataframe["is_negative"] = dataframe["is_shuffled_control"] | (dataframe["spike_n"] == 0)
     return dataframe
 
 
-def safe_divide(
-    numerator: float,
-    denominator: float,
-) -> float:
-    """
-    Divide safely, returning NaN for zero denominators.
-
-    Parameters
-    ----------
-    numerator : float
-        Numerator.
-    denominator : float
-        Denominator.
-
-    Returns
-    -------
-    float
-        Division result, or NaN.
-    """
+def safe_divide(numerator: float, denominator: float) -> float:
     if denominator == 0:
         return math.nan
     return numerator / denominator
@@ -466,30 +333,9 @@ def choose_threshold(
     min_detect_value: float,
     sd_multiplier: float,
 ) -> float:
-    """
-    Choose the detection threshold for one method.
-
-    Parameters
-    ----------
-    negative_values : pd.Series
-        Negative-control metric values.
-    threshold_mode : str
-        Threshold strategy.
-    min_detect_value : float
-        Minimum allowed threshold.
-    sd_multiplier : float
-        Standard deviation multiplier.
-
-    Returns
-    -------
-    float
-        Chosen threshold.
-    """
     negative_values = pd.to_numeric(negative_values, errors="coerce").dropna()
-
     if negative_values.empty:
         return float(min_detect_value)
-
     if threshold_mode == "fixed":
         return float(min_detect_value)
     if threshold_mode == "baseline_mean":
@@ -497,11 +343,8 @@ def choose_threshold(
     if threshold_mode == "baseline_max":
         return float(max(min_detect_value, negative_values.max()))
     if threshold_mode == "baseline_mean_plus_sd":
-        threshold = negative_values.mean() + (
-            sd_multiplier * negative_values.std(ddof=0)
-        )
+        threshold = negative_values.mean() + (sd_multiplier * negative_values.std(ddof=0))
         return float(max(min_detect_value, threshold))
-
     return float(min_detect_value)
 
 
@@ -511,34 +354,10 @@ def compute_detection_calls(
     min_detect_value: float,
     sd_multiplier: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Compute binary detection calls for each method and observation.
-
-    Parameters
-    ----------
-    dataframe : pd.DataFrame
-        Normalised combined long table.
-    threshold_mode : str
-        Threshold strategy.
-    min_detect_value : float
-        Minimum allowed threshold.
-    sd_multiplier : float
-        Standard deviation multiplier.
-
-    Returns
-    -------
-    tuple[pd.DataFrame, pd.DataFrame]
-        Observation-level table with detection calls and method-level threshold
-        summary table.
-    """
     detection_rows: list[pd.DataFrame] = []
     threshold_rows: list[dict[str, object]] = []
 
-    grouped = dataframe.groupby(
-        ["workflow", "metric", "target_label"],
-        dropna=False,
-    )
-
+    grouped = dataframe.groupby(["workflow", "metric", "target_label"], dropna=False)
     for (workflow, metric, target_label), group in grouped:
         negatives = group.loc[group["is_negative"], "value"]
         threshold_value = choose_threshold(
@@ -547,12 +366,10 @@ def compute_detection_calls(
             min_detect_value=min_detect_value,
             sd_multiplier=sd_multiplier,
         )
-
         group = group.copy()
         group["threshold_value"] = threshold_value
         group["detected"] = group["value"] >= threshold_value
         detection_rows.append(group)
-
         threshold_rows.append(
             {
                 "workflow": workflow,
@@ -560,57 +377,23 @@ def compute_detection_calls(
                 "target_label": target_label,
                 "threshold_mode": threshold_mode,
                 "threshold_value": threshold_value,
-                "negative_mean": (
-                    float(negatives.mean()) if not negatives.dropna().empty else math.nan
-                ),
-                "negative_max": (
-                    float(negatives.max()) if not negatives.dropna().empty else math.nan
-                ),
-                "negative_sd": (
-                    float(negatives.std(ddof=0))
-                    if not negatives.dropna().empty
-                    else math.nan
-                ),
+                "negative_mean": float(negatives.mean()) if not negatives.dropna().empty else math.nan,
+                "negative_max": float(negatives.max()) if not negatives.dropna().empty else math.nan,
+                "negative_sd": float(negatives.std(ddof=0)) if not negatives.dropna().empty else math.nan,
                 "n_negative_for_threshold": int(negatives.dropna().shape[0]),
             }
         )
 
-    detection_df = (
-        pd.concat(detection_rows, ignore_index=True)
-        if detection_rows
-        else pd.DataFrame()
-    )
+    detection_df = pd.concat(detection_rows, ignore_index=True) if detection_rows else pd.DataFrame()
     threshold_df = pd.DataFrame(threshold_rows)
     return detection_df, threshold_df
 
 
-def first_spike_meeting_rate(
-    dataframe: pd.DataFrame,
-    min_rate: float,
-) -> float:
-    """
-    Return the first spike level with detection rate at or above a threshold.
-
-    Parameters
-    ----------
-    dataframe : pd.DataFrame
-        Positive-only detection table for one method.
-    min_rate : float
-        Minimum detection rate.
-
-    Returns
-    -------
-    float
-        First spike level meeting the requested rate, or NaN.
-    """
+def first_spike_meeting_rate(dataframe: pd.DataFrame, min_rate: float) -> float:
     if dataframe.empty:
         return math.nan
-
     grouped = (
-        dataframe.groupby("spike_n", dropna=False)["detected"]
-        .mean()
-        .reset_index()
-        .sort_values(by="spike_n")
+        dataframe.groupby("spike_n", dropna=False)["detected"].mean().reset_index().sort_values(by="spike_n")
     )
     detected = grouped.loc[grouped["detected"] >= min_rate, "spike_n"]
     if detected.empty:
@@ -619,19 +402,6 @@ def first_spike_meeting_rate(
 
 
 def build_interpretation(row: pd.Series) -> str:
-    """
-    Build a short plain-language interpretation for one method.
-
-    Parameters
-    ----------
-    row : pd.Series
-        Method summary row.
-
-    Returns
-    -------
-    str
-        Plain-language interpretation.
-    """
     sens = row.get("sensitivity", math.nan)
     spec = row.get("specificity", math.nan)
     fpr = row.get("false_positive_rate", math.nan)
@@ -639,7 +409,6 @@ def build_interpretation(row: pd.Series) -> str:
 
     if pd.isna(sens) or pd.isna(spec):
         return "Insufficient data for stable interpretation"
-
     if sens >= 0.90 and spec >= 0.90:
         if not pd.isna(lod50) and lod50 <= 10:
             return "Strong overall balance with early detection"
@@ -659,27 +428,8 @@ def summarise_method_performance(
     detection_df: pd.DataFrame,
     threshold_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Summarise per-method confusion metrics and derived statistics.
-
-    Parameters
-    ----------
-    detection_df : pd.DataFrame
-        Observation-level detection table.
-    threshold_df : pd.DataFrame
-        Method-level threshold table.
-
-    Returns
-    -------
-    pd.DataFrame
-        Method-level summary table.
-    """
     rows: list[dict[str, object]] = []
-
-    grouped = detection_df.groupby(
-        ["workflow", "metric", "target_label"],
-        dropna=False,
-    )
+    grouped = detection_df.groupby(["workflow", "metric", "target_label"], dropna=False)
 
     for (workflow, metric, target_label), group in grouped:
         positives = group.loc[group["is_positive"]].copy()
@@ -690,58 +440,42 @@ def summarise_method_performance(
         fp = int((negatives["detected"] == True).sum())
         tn = int((negatives["detected"] == False).sum())
 
-        sensitivity = safe_divide(numerator=tp, denominator=tp + fn)
+        sensitivity = safe_divide(tp, tp + fn)
         recall = sensitivity
         true_positive_rate = sensitivity
-        specificity = safe_divide(numerator=tn, denominator=tn + fp)
-        false_positive_rate = safe_divide(numerator=fp, denominator=fp + tn)
-        false_negative_rate = safe_divide(numerator=fn, denominator=fn + tp)
-        precision = safe_divide(numerator=tp, denominator=tp + fp)
-        negative_predictive_value = safe_divide(
-            numerator=tn,
-            denominator=tn + fn,
-        )
-        accuracy = safe_divide(
-            numerator=tp + tn,
-            denominator=tp + tn + fp + fn,
-        )
+        specificity = safe_divide(tn, tn + fp)
+        false_positive_rate = safe_divide(fp, fp + tn)
+        false_negative_rate = safe_divide(fn, fn + tp)
+        precision = safe_divide(tp, tp + fp)
+        negative_predictive_value = safe_divide(tn, tn + fn)
+        accuracy = safe_divide(tp + tn, tp + tn + fp + fn)
         balanced_accuracy = (
             (sensitivity + specificity) / 2
             if not math.isnan(sensitivity) and not math.isnan(specificity)
             else math.nan
         )
-        f1_score = safe_divide(
-            numerator=2 * tp,
-            denominator=(2 * tp) + fp + fn,
-        )
+        f1_score = safe_divide(2 * tp, (2 * tp) + fp + fn)
         youden_j = (
             sensitivity + specificity - 1
             if not math.isnan(sensitivity) and not math.isnan(specificity)
             else math.nan
         )
 
-        lod_50 = first_spike_meeting_rate(dataframe=positives, min_rate=0.50)
-        lod_95 = first_spike_meeting_rate(dataframe=positives, min_rate=0.95)
+        lod_50 = first_spike_meeting_rate(positives, 0.50)
+        lod_95 = first_spike_meeting_rate(positives, 0.95)
 
         threshold_row = threshold_df.loc[
-            (
-                (threshold_df["workflow"] == workflow)
-                & (threshold_df["metric"] == metric)
-                & (threshold_df["target_label"] == target_label)
-            )
+            (threshold_df["workflow"] == workflow)
+            & (threshold_df["metric"] == metric)
+            & (threshold_df["target_label"] == target_label)
         ]
-        threshold_record = (
-            threshold_row.iloc[0].to_dict()
-            if not threshold_row.empty
-            else {}
-        )
+        threshold_record = threshold_row.iloc[0].to_dict() if not threshold_row.empty else {}
 
         rows.append(
             {
                 "workflow": workflow,
                 "metric": metric,
                 "target_label": target_label,
-                "reported_plasmodium_species": target_label,
                 "n_positive": int(positives.shape[0]),
                 "n_negative": int(negatives.shape[0]),
                 "tp": tp,
@@ -773,28 +507,11 @@ def summarise_method_performance(
     out_df = pd.DataFrame(rows)
     if not out_df.empty:
         out_df["interpretation"] = out_df.apply(build_interpretation, axis=1)
-        out_df = out_df.sort_values(
-            by=["workflow", "metric", "target_label"]
-        ).reset_index(drop=True)
+        out_df = out_df.sort_values(by=["workflow", "metric", "target_label"]).reset_index(drop=True)
     return out_df
 
 
-def summarise_detection_by_spike(
-    detection_df: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Summarise detection rate by spike level for each method.
-
-    Parameters
-    ----------
-    detection_df : pd.DataFrame
-        Observation-level detection table.
-
-    Returns
-    -------
-    pd.DataFrame
-        Per-spike detection-rate summary table.
-    """
+def summarise_detection_by_spike(detection_df: pd.DataFrame) -> pd.DataFrame:
     positive_df = detection_df.loc[detection_df["is_positive"]].copy()
     if positive_df.empty:
         return pd.DataFrame(
@@ -808,12 +525,8 @@ def summarise_detection_by_spike(
                 "detection_rate",
             ]
         )
-
     grouped = (
-        positive_df.groupby(
-            ["workflow", "metric", "target_label", "spike_n"],
-            dropna=False,
-        )
+        positive_df.groupby(["workflow", "metric", "target_label", "spike_n"], dropna=False)
         .agg(
             n_observations=("detected", "size"),
             n_detected=("detected", "sum"),
@@ -827,26 +540,11 @@ def summarise_detection_by_spike(
 
 
 def rank_methods(method_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Rank methods in a way that prioritises balanced detection performance.
-
-    Parameters
-    ----------
-    method_df : pd.DataFrame
-        Full method-level summary table.
-
-    Returns
-    -------
-    pd.DataFrame
-        Ranked table.
-    """
     if method_df.empty:
         return method_df.copy()
-
     ranked = method_df.copy()
     ranked["lod50_rank"] = ranked["lod50_spike_n"].fillna(10**12)
     ranked["lod95_rank"] = ranked["lod95_spike_n"].fillna(10**12)
-
     ranked = ranked.sort_values(
         by=[
             "balanced_accuracy",
@@ -860,52 +558,14 @@ def rank_methods(method_df: pd.DataFrame) -> pd.DataFrame:
         ],
         ascending=[False, False, True, False, True, True, False, False],
     ).reset_index(drop=True)
-
     ranked["rank"] = range(1, len(ranked) + 1)
-    ranked = ranked.drop(columns=["lod50_rank", "lod95_rank"])
-    return ranked
+    return ranked.drop(columns=["lod50_rank", "lod95_rank"])
 
 
 def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a compact summary table for easier reading.
-
-    Parameters
-    ----------
-    method_df : pd.DataFrame
-        Full method-level summary table.
-
-    Returns
-    -------
-    pd.DataFrame
-        Reduced summary table with more readable headings.
-    """
     if method_df.empty:
-        return pd.DataFrame(
-            columns=[
-                "Rank",
-                "Workflow",
-                "Metric",
-                "Target",
-                "Threshold",
-                "Sensitivity",
-                "Specificity",
-                "Precision",
-                "F1",
-                "False positive rate",
-                "False negative rate",
-                "LOD50",
-                "LOD95",
-                "TP",
-                "FN",
-                "FP",
-                "TN",
-                "Interpretation",
-            ]
-        )
-
-    ranked = rank_methods(method_df=method_df)
-
+        return pd.DataFrame()
+    ranked = rank_methods(method_df)
     compact = ranked[
         [
             "rank",
@@ -928,8 +588,7 @@ def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
             "interpretation",
         ]
     ].copy()
-
-    compact = compact.rename(
+    return compact.rename(
         columns={
             "rank": "Rank",
             "workflow": "Workflow",
@@ -951,108 +610,161 @@ def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
             "interpretation": "Interpretation",
         }
     )
-    return compact
 
 
-def build_species_summary(method_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Build a species-centred summary table.
+def build_panel_species_summary(
+    detection_df: pd.DataFrame,
+    threshold_df: pd.DataFrame,
+) -> pd.DataFrame:
+    positive_df = detection_df.loc[detection_df["is_positive"]].copy()
+    if positive_df.empty:
+        return pd.DataFrame()
 
-    Parameters
-    ----------
-    method_df : pd.DataFrame
-        Full method-level summary table.
+    rows: list[dict[str, object]] = []
+    grouped = positive_df.groupby(["workflow", "metric", "run_name"], dropna=False)
 
-    Returns
-    -------
-    pd.DataFrame
-        Species-centred summary table.
-    """
-    if method_df.empty:
-        return pd.DataFrame(
-            columns=[
-                "Rank",
-                "Method",
-                "Expected target species",
-                "Reported Plasmodium species",
-                "Sensitivity",
-                "Specificity",
-                "Precision",
-                "F1",
-                "False positive rate",
-                "LOD50",
-                "LOD95",
-                "TP",
-                "FN",
-                "FP",
-                "TN",
-                "Interpretation",
+    for (workflow, metric, run_name), panel_df in grouped:
+        expected_species = sorted(pd.unique(panel_df["target_label"].astype(str)))
+        found_species: list[str] = []
+        threshold_values: list[float] = []
+        per_species_summaries: list[str] = []
+
+        for species in expected_species:
+            species_df = panel_df.loc[panel_df["target_label"] == species].copy()
+            threshold_row = threshold_df.loc[
+                (threshold_df["workflow"] == workflow)
+                & (threshold_df["metric"] == metric)
+                & (threshold_df["target_label"] == species)
             ]
+            threshold_value = float(threshold_row.iloc[0]["threshold_value"]) if not threshold_row.empty else math.nan
+            if not math.isnan(threshold_value):
+                threshold_values.append(threshold_value)
+
+            tp = int((species_df["detected"] == True).sum())
+            fn = int((species_df["detected"] == False).sum())
+            if tp > 0:
+                found_species.append(species)
+
+            sensitivity = safe_divide(tp, tp + fn)
+            per_species_summaries.append(
+                f"{species}: TP={tp}, FN={fn}, sensitivity={format_value(sensitivity)}"
+            )
+
+        n_expected = len(expected_species)
+        n_found = len(found_species)
+        missing_species = [x for x in expected_species if x not in found_species]
+        panel_sensitivity = safe_divide(n_found, n_expected)
+
+        negative_panel = detection_df.loc[
+            (detection_df["workflow"] == workflow)
+            & (detection_df["metric"] == metric)
+            & (detection_df["run_name"] == run_name)
+            & (detection_df["is_negative"])
+        ].copy()
+        fp = int((negative_panel["detected"] == True).sum())
+        tn = int((negative_panel["detected"] == False).sum())
+        specificity = safe_divide(tn, tn + fp)
+        false_positive_rate = safe_divide(fp, fp + tn)
+
+        lod50_values: list[float] = []
+        lod95_values: list[float] = []
+        for species in expected_species:
+            species_df = panel_df.loc[panel_df["target_label"] == species].copy()
+            lod50_val = first_spike_meeting_rate(species_df, 0.50)
+            lod95_val = first_spike_meeting_rate(species_df, 0.95)
+            if not math.isnan(lod50_val):
+                lod50_values.append(lod50_val)
+            if not math.isnan(lod95_val):
+                lod95_values.append(lod95_val)
+
+        lod50_panel = min(lod50_values) if lod50_values else math.nan
+        lod95_panel = min(lod95_values) if lod95_values else math.nan
+        threshold_panel = min(threshold_values) if threshold_values else math.nan
+
+        interpretation = (
+            "All expected species found"
+            if n_found == n_expected and n_expected > 0
+            else "No expected species found"
+            if n_found == 0
+            else "Partial recovery of expected species"
+        )
+        performance_interpretation = build_interpretation(
+            pd.Series(
+                {
+                    "sensitivity": panel_sensitivity,
+                    "specificity": specificity,
+                    "false_positive_rate": false_positive_rate,
+                    "lod50_spike_n": lod50_panel,
+                }
+            )
         )
 
-    ranked = rank_methods(method_df=method_df)
+        rows.append(
+            {
+                "Workflow": workflow,
+                "Metric": metric,
+                "Run": run_name,
+                "Expected species": "; ".join(expected_species),
+                "Found species": "; ".join(found_species),
+                "Missing expected species": "; ".join(missing_species),
+                "N expected species": n_expected,
+                "N found species": n_found,
+                "Panel species recovery": panel_sensitivity,
+                "Threshold": threshold_panel,
+                "Specificity": specificity,
+                "False positive rate": false_positive_rate,
+                "LOD50": lod50_panel,
+                "LOD95": lod95_panel,
+                "Interpretation": interpretation,
+                "Performance interpretation": performance_interpretation,
+                "Per-species summary": " | ".join(per_species_summaries),
+            }
+        )
 
-    species_df = ranked.copy()
-    species_df["Method"] = (
-        species_df["workflow"].astype(str) + " | " + species_df["metric"].astype(str)
-    )
+    panel_df = pd.DataFrame(rows)
+    if panel_df.empty:
+        return panel_df
 
-    species_df = species_df[
+    panel_df["lod50_rank"] = panel_df["LOD50"].fillna(10**12)
+    panel_df["lod95_rank"] = panel_df["LOD95"].fillna(10**12)
+    panel_df = panel_df.sort_values(
+        by=[
+            "Panel species recovery",
+            "Specificity",
+            "False positive rate",
+            "lod50_rank",
+            "lod95_rank",
+            "N found species",
+        ],
+        ascending=[False, False, True, True, True, False],
+    ).reset_index(drop=True)
+    panel_df["Rank"] = range(1, len(panel_df) + 1)
+    panel_df = panel_df.drop(columns=["lod50_rank", "lod95_rank"])
+    return panel_df[
         [
-            "rank",
-            "Method",
-            "target_label",
-            "reported_plasmodium_species",
-            "sensitivity",
-            "specificity",
-            "precision",
-            "f1_score",
-            "false_positive_rate",
-            "lod50_spike_n",
-            "lod95_spike_n",
-            "tp",
-            "fn",
-            "fp",
-            "tn",
-            "interpretation",
+            "Rank",
+            "Workflow",
+            "Metric",
+            "Run",
+            "Expected species",
+            "Found species",
+            "Missing expected species",
+            "N expected species",
+            "N found species",
+            "Panel species recovery",
+            "Threshold",
+            "Specificity",
+            "False positive rate",
+            "LOD50",
+            "LOD95",
+            "Interpretation",
+            "Performance interpretation",
+            "Per-species summary",
         ]
-    ].rename(
-        columns={
-            "rank": "Rank",
-            "target_label": "Expected target species",
-            "reported_plasmodium_species": "Reported Plasmodium species",
-            "sensitivity": "Sensitivity",
-            "specificity": "Specificity",
-            "precision": "Precision",
-            "f1_score": "F1",
-            "false_positive_rate": "False positive rate",
-            "lod50_spike_n": "LOD50",
-            "lod95_spike_n": "LOD95",
-            "tp": "TP",
-            "fn": "FN",
-            "fp": "FP",
-            "tn": "TN",
-            "interpretation": "Interpretation",
-        }
-    )
-
-    return species_df
+    ]
 
 
 def format_value(value: object) -> str:
-    """
-    Format values for HTML display.
-
-    Parameters
-    ----------
-    value : object
-        Input value.
-
-    Returns
-    -------
-    str
-        Formatted string.
-    """
     if pd.isna(value):
         return ""
     if isinstance(value, bool):
@@ -1069,21 +781,6 @@ def format_value(value: object) -> str:
 
 
 def value_to_css_class(column: str, value: object) -> str:
-    """
-    Map a numeric value to a CSS class for HTML highlighting.
-
-    Parameters
-    ----------
-    column : str
-        Column name.
-    value : object
-        Cell value.
-
-    Returns
-    -------
-    str
-        CSS class string.
-    """
     if pd.isna(value):
         return "cell-empty"
 
@@ -1092,6 +789,7 @@ def value_to_css_class(column: str, value: object) -> str:
         "Specificity",
         "Precision",
         "F1",
+        "Panel species recovery",
         "balanced_accuracy",
         "accuracy",
     }
@@ -1127,23 +825,6 @@ def dataframe_to_html_table(
     table_class: str = "data-table",
     compact: bool = False,
 ) -> str:
-    """
-    Convert a DataFrame to an HTML table.
-
-    Parameters
-    ----------
-    dataframe : pd.DataFrame
-        Input table.
-    table_class : str, optional
-        HTML table class name, by default "data-table".
-    compact : bool, optional
-        Whether to use compact formatting, by default False.
-
-    Returns
-    -------
-    str
-        HTML table string.
-    """
     if dataframe.empty:
         return '<p class="muted">No rows available.</p>'
 
@@ -1156,11 +837,9 @@ def dataframe_to_html_table(
     for _, row in dataframe.iterrows():
         cells = []
         for column, value in row.items():
-            css_class = value_to_css_class(column=str(column), value=value)
+            css_class = value_to_css_class(str(column), value)
             extra_class = f' class="{css_class}"' if css_class else ""
-            cells.append(
-                f"<td{extra_class}>{html.escape(format_value(value))}</td>"
-            )
+            cells.append(f"<td{extra_class}>{html.escape(format_value(value))}</td>")
         body_rows.append(f"<tr>{''.join(cells)}</tr>")
 
     wrapper_class = "table-wrap compact-wrap" if compact else "table-wrap"
@@ -1176,35 +855,12 @@ def dataframe_to_html_table(
 
 def build_html_page(
     compact_df: pd.DataFrame,
-    species_df: pd.DataFrame,
+    panel_species_df: pd.DataFrame,
     method_df: pd.DataFrame,
     by_spike_df: pd.DataFrame,
     definitions_df: pd.DataFrame,
     plot_explanations_df: pd.DataFrame,
 ) -> str:
-    """
-    Build a standalone HTML page for the method-performance summaries.
-
-    Parameters
-    ----------
-    compact_df : pd.DataFrame
-        Compact summary table.
-    species_df : pd.DataFrame
-        Species-centred summary table.
-    method_df : pd.DataFrame
-        Full method-level performance table.
-    by_spike_df : pd.DataFrame
-        Per-spike detection-rate table.
-    definitions_df : pd.DataFrame
-        Metric definitions table.
-    plot_explanations_df : pd.DataFrame
-        Plot explanations table.
-
-    Returns
-    -------
-    str
-        HTML page.
-    """
     style = """
     <style>
       body {
@@ -1215,7 +871,7 @@ def build_html_page(
         background: #f7f9fc;
       }
       .container {
-        max-width: 1460px;
+        max-width: 1520px;
         margin: 0 auto;
         padding: 32px;
         background: #ffffff;
@@ -1292,65 +948,48 @@ def build_html_page(
     </style>
     """
 
-    compact_table = dataframe_to_html_table(
-        dataframe=compact_df,
-        compact=True,
-    )
-    species_table = dataframe_to_html_table(
-        dataframe=species_df,
-        compact=True,
-    )
-    method_table = dataframe_to_html_table(
-        dataframe=method_df,
-        compact=False,
-    )
-    by_spike_table = dataframe_to_html_table(
-        dataframe=by_spike_df,
-        compact=False,
-    )
-    definitions_table = dataframe_to_html_table(
-        dataframe=definitions_df,
-        compact=False,
-    )
-    plot_table = dataframe_to_html_table(
-        dataframe=plot_explanations_df,
-        compact=False,
-    )
+    compact_table = dataframe_to_html_table(compact_df, compact=True)
+    panel_species_table = dataframe_to_html_table(panel_species_df, compact=True)
+    method_table = dataframe_to_html_table(method_df, compact=False)
+    by_spike_table = dataframe_to_html_table(by_spike_df, compact=False)
+    definitions_table = dataframe_to_html_table(definitions_df, compact=False)
+    plot_table = dataframe_to_html_table(plot_explanations_df, compact=False)
 
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-  <meta charset="utf-8">
+  <meta charset=\"utf-8\">
   <title>Method performance summary</title>
   {style}
 </head>
 <body>
-  <div class="container">
+  <div class=\"container\">
     <h1>Method performance summary</h1>
-    <p class="muted">
+    <p class=\"muted\">
       Positive observations are non-shuffled rows with spike_n greater than 0.
       Negative observations are shuffled-control rows or rows with spike_n equal
       to 0. Detection is called using the selected threshold rule.
     </p>
 
     <h2>Headline comparison table</h2>
-    <p class="section-note">
+    <p class=\"section-note\">
       This compact table is intended for rapid comparison across methods.
       Methods are ranked primarily by balanced accuracy, then specificity,
       then false-positive rate, then sensitivity, then LOD.
     </p>
     {compact_table}
 
-    <h2>Species-centred summary</h2>
-    <p class="section-note">
-      This table focuses on the expected target species and the reported
-      Plasmodium species for each method, with a short interpretation.
+    <h2>Panel species summary</h2>
+    <p class=\"section-note\">
+      This table shows the full set of species expected in each run panel and
+      the set of tracked target species that were actually found under the
+      chosen threshold rule.
     </p>
-    {species_table}
+    {panel_species_table}
 
     <details open>
       <summary>Show full method-level performance table</summary>
-      <p class="small-note">
+      <p class=\"small-note\">
         This detailed table includes confusion counts, threshold statistics,
         and the full set of derived performance metrics.
       </p>
@@ -1359,7 +998,7 @@ def build_html_page(
 
     <details>
       <summary>Show detection rate by spike level</summary>
-      <p class="small-note">
+      <p class=\"small-note\">
         This table shows how often each method is called positive at each spike
         level among positive observations.
       </p>
@@ -1379,57 +1018,21 @@ def build_html_page(
 
 def build_html_fragment(
     compact_df: pd.DataFrame,
-    species_df: pd.DataFrame,
+    panel_species_df: pd.DataFrame,
     method_df: pd.DataFrame,
     definitions_df: pd.DataFrame,
     plot_explanations_df: pd.DataFrame,
 ) -> str:
-    """
-    Build an HTML fragment suitable for insertion into the main report.
-
-    Parameters
-    ----------
-    compact_df : pd.DataFrame
-        Compact summary table.
-    species_df : pd.DataFrame
-        Species-centred summary table.
-    method_df : pd.DataFrame
-        Full method-level performance table.
-    definitions_df : pd.DataFrame
-        Metric definitions table.
-    plot_explanations_df : pd.DataFrame
-        Plot explanations table.
-
-    Returns
-    -------
-    str
-        HTML fragment.
-    """
-    compact_table = dataframe_to_html_table(
-        dataframe=compact_df,
-        compact=True,
-    )
-    species_table = dataframe_to_html_table(
-        dataframe=species_df,
-        compact=True,
-    )
-    method_table = dataframe_to_html_table(
-        dataframe=method_df,
-        compact=False,
-    )
-    definitions_table = dataframe_to_html_table(
-        dataframe=definitions_df,
-        compact=False,
-    )
-    plot_table = dataframe_to_html_table(
-        dataframe=plot_explanations_df,
-        compact=False,
-    )
+    compact_table = dataframe_to_html_table(compact_df, compact=True)
+    panel_species_table = dataframe_to_html_table(panel_species_df, compact=True)
+    method_table = dataframe_to_html_table(method_df, compact=False)
+    definitions_table = dataframe_to_html_table(definitions_df, compact=False)
+    plot_table = dataframe_to_html_table(plot_explanations_df, compact=False)
 
     return f"""
-<section class="report-section">
+<section class=\"report-section\">
   <h2>Method performance summary</h2>
-  <p class="muted">
+  <p class=\"muted\">
     Sensitivity, recall, and true positive rate are equivalent here and are
     all reported for convenience. Thresholding is method-specific and based on
     the selected negative-control rule.
@@ -1438,8 +1041,8 @@ def build_html_fragment(
   <h3>Headline comparison table</h3>
   {compact_table}
 
-  <h3>Species-centred summary</h3>
-  {species_table}
+  <h3>Panel species summary</h3>
+  {panel_species_table}
 
   <details>
     <summary>Show full detail table</summary>
@@ -1460,18 +1063,6 @@ def format_excel_sheet(
     percentage_columns: set[str],
     integer_columns: set[str],
 ) -> None:
-    """
-    Apply simple formatting to all sheets in the Excel workbook.
-
-    Parameters
-    ----------
-    workbook_path : Path
-        Workbook path to format.
-    percentage_columns : set[str]
-        Columns to format as proportions.
-    integer_columns : set[str]
-        Columns to format as integers.
-    """
     workbook = load_workbook(filename=workbook_path)
 
     header_fill = PatternFill(fill_type="solid", fgColor="1F4E79")
@@ -1508,31 +1099,24 @@ def format_excel_sheet(
                 if cell.value is not None:
                     max_len = max(max_len, len(str(cell.value)))
 
-                    if str(header) in percentage_columns and isinstance(
-                        cell.value, (int, float)
-                    ):
+                    if str(header) in percentage_columns and isinstance(cell.value, (int, float)):
                         cell.number_format = "0.000"
-                    elif str(header) in integer_columns and isinstance(
-                        cell.value, (int, float)
-                    ):
+                    elif str(header) in integer_columns and isinstance(cell.value, (int, float)):
                         cell.number_format = "0"
 
-            worksheet.column_dimensions[column_letter].width = min(max_len + 2, 34)
+            worksheet.column_dimensions[column_letter].width = min(max_len + 2, 42)
 
     workbook.save(filename=workbook_path)
 
 
 def main() -> None:
-    """
-    Run the method-performance summarisation workflow.
-    """
     args = parse_args()
 
     out_dir = Path(args.out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     combined_long = pd.read_csv(args.combined_long_tsv, sep="\t")
-    combined_long = normalise_combined_long(combined_long=combined_long)
+    combined_long = normalise_combined_long(combined_long)
 
     detection_df, threshold_df = compute_detection_calls(
         dataframe=combined_long,
@@ -1541,19 +1125,16 @@ def main() -> None:
         sd_multiplier=args.sd_multiplier,
     )
 
-    method_df = summarise_method_performance(
-        detection_df=detection_df,
-        threshold_df=threshold_df,
-    )
-    compact_df = build_compact_table(method_df=method_df)
-    species_df = build_species_summary(method_df=method_df)
-    by_spike_df = summarise_detection_by_spike(detection_df=detection_df)
+    method_df = summarise_method_performance(detection_df, threshold_df)
+    compact_df = build_compact_table(method_df)
+    panel_species_df = build_panel_species_summary(detection_df, threshold_df)
+    by_spike_df = summarise_detection_by_spike(detection_df)
     definitions_df = pd.DataFrame(METRIC_DEFINITIONS)
     plot_explanations_df = pd.DataFrame(REPORT_PLOT_EXPLANATIONS)
 
     method_tsv = out_dir / "method_performance.tsv"
     compact_tsv = out_dir / "method_performance_compact.tsv"
-    species_tsv = out_dir / "method_species_summary.tsv"
+    panel_species_tsv = out_dir / "method_panel_species_summary.tsv"
     by_spike_tsv = out_dir / "method_performance_by_spike.tsv"
     definitions_tsv = out_dir / "metric_definitions.tsv"
     xlsx_path = out_dir / "method_performance.xlsx"
@@ -1562,21 +1143,17 @@ def main() -> None:
 
     method_df.to_csv(method_tsv, sep="\t", index=False)
     compact_df.to_csv(compact_tsv, sep="\t", index=False)
-    species_df.to_csv(species_tsv, sep="\t", index=False)
+    panel_species_df.to_csv(panel_species_tsv, sep="\t", index=False)
     by_spike_df.to_csv(by_spike_tsv, sep="\t", index=False)
     definitions_df.to_csv(definitions_tsv, sep="\t", index=False)
 
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
         compact_df.to_excel(writer, sheet_name="headline_table", index=False)
-        species_df.to_excel(writer, sheet_name="species_summary", index=False)
+        panel_species_df.to_excel(writer, sheet_name="panel_species_summary", index=False)
         method_df.to_excel(writer, sheet_name="full_method_table", index=False)
         by_spike_df.to_excel(writer, sheet_name="by_spike", index=False)
         definitions_df.to_excel(writer, sheet_name="definitions", index=False)
-        plot_explanations_df.to_excel(
-            writer,
-            sheet_name="plot_interpretation",
-            index=False,
-        )
+        plot_explanations_df.to_excel(writer, sheet_name="plot_interpretation", index=False)
 
     format_excel_sheet(
         workbook_path=xlsx_path,
@@ -1587,6 +1164,7 @@ def main() -> None:
             "F1",
             "False positive rate",
             "False negative rate",
+            "Panel species recovery",
             "sensitivity",
             "recall",
             "true_positive_rate",
@@ -1603,6 +1181,8 @@ def main() -> None:
         },
         integer_columns={
             "Rank",
+            "N expected species",
+            "N found species",
             "TP",
             "FN",
             "FP",
@@ -1626,7 +1206,7 @@ def main() -> None:
     page_html.write_text(
         build_html_page(
             compact_df=compact_df,
-            species_df=species_df,
+            panel_species_df=panel_species_df,
             method_df=method_df,
             by_spike_df=by_spike_df,
             definitions_df=definitions_df,
@@ -1637,7 +1217,7 @@ def main() -> None:
     fragment_html.write_text(
         build_html_fragment(
             compact_df=compact_df,
-            species_df=species_df,
+            panel_species_df=panel_species_df,
             method_df=method_df,
             definitions_df=definitions_df,
             plot_explanations_df=plot_explanations_df,
@@ -1647,7 +1227,7 @@ def main() -> None:
 
     print(f"[INFO] Wrote: {method_tsv}")
     print(f"[INFO] Wrote: {compact_tsv}")
-    print(f"[INFO] Wrote: {species_tsv}")
+    print(f"[INFO] Wrote: {panel_species_tsv}")
     print(f"[INFO] Wrote: {by_spike_tsv}")
     print(f"[INFO] Wrote: {definitions_tsv}")
     print(f"[INFO] Wrote: {xlsx_path}")
