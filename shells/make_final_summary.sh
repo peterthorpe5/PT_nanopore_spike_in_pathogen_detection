@@ -12,8 +12,8 @@ python3 summarise_spikein_runs_v3.py \
 
 
   python PT_nanopore_spike_in_pathogen_detection/summary/summarise_spikein_runs_v4_with_multi_metamaps.py \
-  --input_dirs /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs \
-  --out_dir /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/spikein_summary_report_v4 \
+  --input_dirs runs \
+  --out_dir spikein_summary_report \
   --verbose
 
 ########################

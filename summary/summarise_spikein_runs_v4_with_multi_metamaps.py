@@ -565,36 +565,46 @@ def convert_species_named_multi_metrics(
     """
     dataframe = dataframe.copy()
 
-    label_order: list[str] = []
     label_to_idx: dict[str, int] = {}
+    ordered_labels: list[str] = []
 
     for column in value_columns:
         match = SPECIES_METRIC_PATTERN.match(column)
         if match is None:
             continue
+
         raw_label = match.group("label")
         if raw_label not in label_to_idx:
-            label_to_idx[raw_label] = len(label_order) + 1
-            label_order.append(raw_label)
+            label_to_idx[raw_label] = len(ordered_labels) + 1
+            ordered_labels.append(raw_label)
 
-    for raw_label, genome_idx in label_to_idx.items():
-        dataframe[f"target_label_g{genome_idx}"] = titleise_target_label(raw_label)
+    for raw_label in ordered_labels:
+        genome_idx = label_to_idx[raw_label]
+        clean_label = titleise_target_label(raw_label)
+
+        dataframe.loc[:, f"target_label_g{genome_idx}"] = [
+            clean_label
+        ] * len(dataframe)
 
     for column in value_columns:
         match = SPECIES_METRIC_PATTERN.match(column)
         if match is None:
             continue
+
         raw_label = match.group("label")
         prefix = match.group("prefix")
         suffix = match.group("suffix")
+
         metric_name = metric_name_from_parts(prefix=prefix, suffix=suffix)
         if metric_name is None:
             continue
+
         genome_idx = label_to_idx[raw_label]
         new_column = f"{metric_name}_g{genome_idx}"
-        dataframe[new_column] = dataframe[column]
+        dataframe.loc[:, new_column] = dataframe[column]
 
     return dataframe
+
 
 
 def standardise_single_read(dataframe: pd.DataFrame) -> pd.DataFrame:
