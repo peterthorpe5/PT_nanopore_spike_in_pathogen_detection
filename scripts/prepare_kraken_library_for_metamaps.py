@@ -23,6 +23,7 @@ Outputs
 - taxonomy/
 - manifest.tsv
 - excluded_records.tsv
+- contig_header_map.tsv
 """
 
 from __future__ import annotations
@@ -307,6 +308,7 @@ def write_contig_header_map(
                 f"{record.synthetic_name}\n"
             )
 
+
 def prepare_outputs(out_dir: Path) -> Dict[str, Path]:
     """
     Prepare output directory structure.
@@ -411,12 +413,12 @@ def write_manifest(
     """
     with manifest_tsv.open(mode="w", encoding="utf-8") as handle:
         handle.write(
-            "source_fasta\told_taxid\tnew_taxid\taccession\told_header\tnew_header\n"
+            "source_fasta\told_taxid\tnew_taxid\tcontig_id\taccession\told_header\tnew_header\n"
         )
         for record in records:
             handle.write(
                 f"{record.source_fasta}\t{record.old_taxid}\t{record.new_taxid}\t"
-                f"{record.accession}\t{record.old_header}\t{record.new_header}\n"
+                f"{record.contig_id}\t{record.accession}\t{record.old_header}\t{record.new_header}\n"
             )
 
 
@@ -731,6 +733,7 @@ def main() -> None:
     print(f"[INFO] Excluded records: {len(excluded_rows)}")
     print(f"[INFO] Combined FASTA: {outputs['combined_fasta']}")
     print(f"[INFO] Extended taxonomy: {outputs['taxonomy_out']}")
+    print(f"[INFO] Contig map: {outputs['contig_map_tsv']}")
     print(f"[INFO] Manifest: {outputs['manifest_tsv']}")
     print(f"[INFO] Excluded log: {outputs['excluded_tsv']}")
     print("[INFO] Validation passed")

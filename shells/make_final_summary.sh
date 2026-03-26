@@ -10,6 +10,12 @@ python3 summarise_spikein_runs_v3.py \
  python PT_nanopore_spike_in_pathogen_detection/summary/summarise_spikein_runs_v3.py \
   --input_dirs runs --out_dir spikein_summary_report --verbose
 
+
+  python PT_nanopore_spike_in_pathogen_detection/summary/summarise_spikein_runs_v4_with_multi_metamaps.py \
+  --input_dirs /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs \
+  --out_dir /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/spikein_summary_report_v4 \
+  --verbose
+
 ########################
 ## After running the above, you can then generate a report with:
 
@@ -21,6 +27,7 @@ python3 make_spikein_report_v5.py \
  python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_report_v5.py \
   --summary_dir spikein_summary_report \
   --title "ONT spike-in summary report"
+
 
 
 ########################
