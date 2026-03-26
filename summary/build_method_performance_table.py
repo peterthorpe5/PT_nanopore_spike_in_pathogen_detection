@@ -10,6 +10,13 @@ It treats each workflow / metric / target-label combination as a separate
 benchmarking method and calculates confusion-matrix-style performance
 statistics using a configurable detection threshold.
 
+Compared with earlier versions, this script also:
+- writes a formatted Excel workbook
+- produces a more readable HTML page and HTML fragment
+- includes a compact headline table and a full-detail table
+- includes definitions of all reported metrics
+- includes notes on how to interpret the plots in the main HTML report
+
 Default interpretation
 ----------------------
 - Positive observations:
@@ -25,20 +32,26 @@ to the method-specific maximum observed negative value, with a floor set by
 
 Outputs
 -------
-All tables are written as tab-separated files.
+All tables are written as tab-separated files unless otherwise noted.
 
 1. method_performance.tsv
    One row per workflow / metric / target-label method.
-2. method_performance_by_spike.tsv
+2. method_performance_compact.tsv
+   A reduced summary table for easier reading in reports.
+3. method_performance_by_spike.tsv
    Detection rates by spike level for each method.
-3. method_performance.html
+4. metric_definitions.tsv
+   Definitions of all reported performance statistics.
+5. method_performance.xlsx
+   Formatted Excel workbook with multiple sheets.
+6. method_performance.html
    Standalone HTML page for review.
-4. method_performance_fragment.html
+7. method_performance_fragment.html
    HTML fragment that can be inserted into the main report.
 
 Example
 -------
-python build_method_performance_table.py \
+python build_method_performance_table_pretty_excel.py \
     --combined_long_tsv spikein_summary_report/combined_long.tsv \
     --out_dir spikein_summary_report
 """
@@ -52,6 +65,197 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+
+METRIC_DEFINITIONS = [
+    {
+        "term": "TP",
+        "full_name": "True positives",
+        "definition": "Positive samples that were correctly called detected.",
+        "formula": "Count of positive observations with detected = True",
+    },
+    {
+        "term": "FP",
+        "full_name": "False positives",
+        "definition": "Negative samples that were incorrectly called detected.",
+        "formula": "Count of negative observations with detected = True",
+    },
+    {
+        "term": "TN",
+        "full_name": "True negatives",
+        "definition": "Negative samples that were correctly called not detected.",
+        "formula": "Count of negative observations with detected = False",
+    },
+    {
+        "term": "FN",
+        "full_name": "False negatives",
+        "definition": "Positive samples that were incorrectly called not detected.",
+        "formula": "Count of positive observations with detected = False",
+    },
+    {
+        "term": "sensitivity",
+        "full_name": "Sensitivity",
+        "definition": (
+            "Proportion of true positives recovered among all positive samples."
+        ),
+        "formula": "TP / (TP + FN)",
+    },
+    {
+        "term": "recall",
+        "full_name": "Recall",
+        "definition": "Same quantity as sensitivity in this framework.",
+        "formula": "TP / (TP + FN)",
+    },
+    {
+        "term": "true_positive_rate",
+        "full_name": "True positive rate",
+        "definition": "Same quantity as sensitivity and recall in this framework.",
+        "formula": "TP / (TP + FN)",
+    },
+    {
+        "term": "specificity",
+        "full_name": "Specificity",
+        "definition": "Proportion of true negatives correctly rejected.",
+        "formula": "TN / (TN + FP)",
+    },
+    {
+        "term": "false_positive_rate",
+        "full_name": "False positive rate",
+        "definition": (
+            "Proportion of negative samples incorrectly called positive."
+        ),
+        "formula": "FP / (FP + TN)",
+    },
+    {
+        "term": "false_negative_rate",
+        "full_name": "False negative rate",
+        "definition": "Proportion of positive samples missed by the method.",
+        "formula": "FN / (FN + TP)",
+    },
+    {
+        "term": "precision",
+        "full_name": "Precision",
+        "definition": "Among all positive calls, the proportion that were correct.",
+        "formula": "TP / (TP + FP)",
+    },
+    {
+        "term": "negative_predictive_value",
+        "full_name": "Negative predictive value",
+        "definition": "Among all negative calls, the proportion that were correct.",
+        "formula": "TN / (TN + FN)",
+    },
+    {
+        "term": "accuracy",
+        "full_name": "Accuracy",
+        "definition": "Overall proportion of correct calls.",
+        "formula": "(TP + TN) / (TP + TN + FP + FN)",
+    },
+    {
+        "term": "balanced_accuracy",
+        "full_name": "Balanced accuracy",
+        "definition": (
+            "Average of sensitivity and specificity. Useful when positive and "
+            "negative classes are imbalanced."
+        ),
+        "formula": "(Sensitivity + Specificity) / 2",
+    },
+    {
+        "term": "f1_score",
+        "full_name": "F1 score",
+        "definition": "Harmonic mean of precision and recall.",
+        "formula": "2TP / (2TP + FP + FN)",
+    },
+    {
+        "term": "youden_j",
+        "full_name": "Youden's J",
+        "definition": (
+            "Single summary index combining sensitivity and specificity. "
+            "Higher values indicate better separation from negatives."
+        ),
+        "formula": "Sensitivity + Specificity - 1",
+    },
+    {
+        "term": "lod50_spike_n",
+        "full_name": "LOD50 by spike level",
+        "definition": (
+            "Lowest spike_n at which the detection rate is at least 50 percent."
+        ),
+        "formula": (
+            "First spike_n where mean(detected) across positive observations "
+            "is >= 0.50"
+        ),
+    },
+    {
+        "term": "lod95_spike_n",
+        "full_name": "LOD95 by spike level",
+        "definition": (
+            "Lowest spike_n at which the detection rate is at least 95 percent."
+        ),
+        "formula": (
+            "First spike_n where mean(detected) across positive observations "
+            "is >= 0.95"
+        ),
+    },
+]
+
+REPORT_PLOT_EXPLANATIONS = [
+    {
+        "plot_name": "Detection overview plots",
+        "description": (
+            "These plots show how each method's raw signal changes as more "
+            "simulated pathogen reads are added. The x-axis is total spiked "
+            "reads and the y-axis is the raw method-specific signal, such as "
+            "Kraken target reads, minimap target alignments, MetaMaps target "
+            "reads, or Kraken target contigs."
+        ),
+    },
+    {
+        "plot_name": "Separate panels by workflow, metric, and target",
+        "description": (
+            "Each panel corresponds to one workflow, one metric, and one target "
+            "label. This makes it easier to compare how a given target behaves "
+            "within a method without mixing together signals from different "
+            "tools or species."
+        ),
+    },
+    {
+        "plot_name": "Lines within a panel",
+        "description": (
+            "Lines represent different run families within the same workflow. "
+            "The plotted value is the median signal at each spike level across "
+            "replicates within that run."
+        ),
+    },
+    {
+        "plot_name": "Shuffled controls",
+        "description": (
+            "Any line labelled as shuffled is a randomised negative control. "
+            "Ideally, these lines should remain close to baseline. Upward "
+            "movement in shuffled controls suggests background noise or "
+            "false-positive behaviour."
+        ),
+    },
+    {
+        "plot_name": "How to interpret good performance",
+        "description": (
+            "A strong method typically shows low or stable signal in negatives "
+            "and shuffled controls, increasing signal as spike level rises, "
+            "and earlier separation from baseline at low abundance."
+        ),
+    },
+    {
+        "plot_name": "What the performance table adds",
+        "description": (
+            "The performance table turns those trends into summary statistics "
+            "using a configurable detection threshold. It gives an at-a-glance "
+            "comparison of sensitivity, specificity, precision, false-positive "
+            "rate, and limit-of-detection style summaries."
+        ),
+    },
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,7 +292,7 @@ def parse_args() -> argparse.Namespace:
             "baseline_mean_plus_sd",
         ],
         default="baseline_max",
-        help=("Detection threshold strategy. Default: baseline_max"),
+        help="Detection threshold strategy. Default: baseline_max",
     )
     parser.add_argument(
         "--min_detect_value",
@@ -584,6 +788,86 @@ def summarise_detection_by_spike(
     return grouped
 
 
+def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a compact summary table for easier reading.
+
+    Parameters
+    ----------
+    method_df : pd.DataFrame
+        Full method-level summary table.
+
+    Returns
+    -------
+    pd.DataFrame
+        Reduced summary table with more readable headings.
+    """
+    if method_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "Workflow",
+                "Metric",
+                "Target",
+                "Threshold",
+                "Sensitivity",
+                "Specificity",
+                "Precision",
+                "F1",
+                "False positive rate",
+                "False negative rate",
+                "LOD50",
+                "LOD95",
+                "TP",
+                "FN",
+                "FP",
+                "TN",
+            ]
+        )
+
+    compact = method_df[
+        [
+            "workflow",
+            "metric",
+            "target_label",
+            "threshold_value",
+            "sensitivity",
+            "specificity",
+            "precision",
+            "f1_score",
+            "false_positive_rate",
+            "false_negative_rate",
+            "lod50_spike_n",
+            "lod95_spike_n",
+            "tp",
+            "fn",
+            "fp",
+            "tn",
+        ]
+    ].copy()
+
+    compact = compact.rename(
+        columns={
+            "workflow": "Workflow",
+            "metric": "Metric",
+            "target_label": "Target",
+            "threshold_value": "Threshold",
+            "sensitivity": "Sensitivity",
+            "specificity": "Specificity",
+            "precision": "Precision",
+            "f1_score": "F1",
+            "false_positive_rate": "False positive rate",
+            "false_negative_rate": "False negative rate",
+            "lod50_spike_n": "LOD50",
+            "lod95_spike_n": "LOD95",
+            "tp": "TP",
+            "fn": "FN",
+            "fp": "FP",
+            "tn": "TN",
+        }
+    )
+    return compact
+
+
 def format_value(value: object) -> str:
     """
     Format values for HTML display.
@@ -613,9 +897,64 @@ def format_value(value: object) -> str:
     return str(value)
 
 
+def value_to_css_class(column: str, value: object) -> str:
+    """
+    Map a numeric value to a CSS class for HTML highlighting.
+
+    Parameters
+    ----------
+    column : str
+        Column name.
+    value : object
+        Cell value.
+
+    Returns
+    -------
+    str
+        CSS class string.
+    """
+    if pd.isna(value):
+        return "cell-empty"
+
+    good_columns = {
+        "Sensitivity",
+        "Specificity",
+        "Precision",
+        "F1",
+        "balanced_accuracy",
+        "accuracy",
+    }
+    bad_columns = {
+        "False positive rate",
+        "False negative rate",
+        "false_positive_rate",
+        "false_negative_rate",
+    }
+
+    if not isinstance(value, (int, float)):
+        return ""
+
+    if column in good_columns:
+        if value >= 0.90:
+            return "cell-good"
+        if value >= 0.50:
+            return "cell-mid"
+        return "cell-bad"
+
+    if column in bad_columns:
+        if value <= 0.10:
+            return "cell-good"
+        if value <= 0.50:
+            return "cell-mid"
+        return "cell-bad"
+
+    return ""
+
+
 def dataframe_to_html_table(
     dataframe: pd.DataFrame,
     table_class: str = "data-table",
+    compact: bool = False,
 ) -> str:
     """
     Convert a DataFrame to an HTML table.
@@ -626,6 +965,8 @@ def dataframe_to_html_table(
         Input table.
     table_class : str, optional
         HTML table class name, by default "data-table".
+    compact : bool, optional
+        Whether to use compact formatting, by default False.
 
     Returns
     -------
@@ -639,35 +980,51 @@ def dataframe_to_html_table(
         f"<th>{html.escape(str(column))}</th>"
         for column in dataframe.columns
     )
+
     body_rows = []
     for _, row in dataframe.iterrows():
-        cells = "".join(
-            f"<td>{html.escape(format_value(value))}</td>"
-            for value in row.tolist()
-        )
-        body_rows.append(f"<tr>{cells}</tr>")
+        cells = []
+        for column, value in row.items():
+            css_class = value_to_css_class(column=str(column), value=value)
+            extra_class = f' class="{css_class}"' if css_class else ""
+            cells.append(
+                f"<td{extra_class}>{html.escape(format_value(value))}</td>"
+            )
+        body_rows.append(f"<tr>{''.join(cells)}</tr>")
 
+    wrapper_class = "table-wrap compact-wrap" if compact else "table-wrap"
     return (
+        f'<div class="{wrapper_class}">'
         f"<table class=\"{html.escape(table_class)}\">"
         f"<thead><tr>{header_cells}</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         f"</table>"
+        f"</div>"
     )
 
 
 def build_html_page(
+    compact_df: pd.DataFrame,
     method_df: pd.DataFrame,
     by_spike_df: pd.DataFrame,
+    definitions_df: pd.DataFrame,
+    plot_explanations_df: pd.DataFrame,
 ) -> str:
     """
     Build a standalone HTML page for the method-performance summaries.
 
     Parameters
     ----------
+    compact_df : pd.DataFrame
+        Compact summary table.
     method_df : pd.DataFrame
-        Method-level performance table.
+        Full method-level performance table.
     by_spike_df : pd.DataFrame
         Per-spike detection-rate table.
+    definitions_df : pd.DataFrame
+        Metric definitions table.
+    plot_explanations_df : pd.DataFrame
+        Plot explanations table.
 
     Returns
     -------
@@ -684,30 +1041,44 @@ def build_html_page(
         background: #f7f9fc;
       }
       .container {
-        max-width: 1280px;
+        max-width: 1400px;
         margin: 0 auto;
         padding: 32px;
         background: #ffffff;
       }
-      h1, h2 {
+      h1, h2, h3 {
         color: #1f4e79;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid #dbe5f0;
+        border-radius: 10px;
+        margin-top: 14px;
+        background: #ffffff;
+      }
+      .compact-wrap {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
       }
       .data-table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 14px;
         font-size: 14px;
       }
       .data-table thead th {
+        position: sticky;
+        top: 0;
         background: #1f4e79;
         color: white;
         text-align: left;
         padding: 10px 8px;
+        white-space: nowrap;
+        z-index: 2;
       }
       .data-table td {
         border-bottom: 1px solid #e6edf5;
         padding: 8px;
         vertical-align: top;
+        white-space: nowrap;
       }
       .data-table tbody tr:nth-child(even) {
         background: #fbfdff;
@@ -715,34 +1086,106 @@ def build_html_page(
       .muted {
         color: #666666;
       }
+      .section-note {
+        margin-top: 8px;
+        color: #333333;
+      }
+      .small-note {
+        font-size: 13px;
+        color: #555555;
+      }
+      .cell-good {
+        background: #e9f7ef;
+        font-weight: 600;
+      }
+      .cell-mid {
+        background: #fff8e1;
+      }
+      .cell-bad {
+        background: #fdecea;
+      }
+      .cell-empty {
+        color: #999999;
+      }
+      details {
+        margin-top: 18px;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: #1f4e79;
+      }
     </style>
     """
 
-    method_table = dataframe_to_html_table(dataframe=method_df)
-    by_spike_table = dataframe_to_html_table(dataframe=by_spike_df)
+    compact_table = dataframe_to_html_table(
+        dataframe=compact_df,
+        compact=True,
+    )
+    method_table = dataframe_to_html_table(
+        dataframe=method_df,
+        compact=False,
+    )
+    by_spike_table = dataframe_to_html_table(
+        dataframe=by_spike_df,
+        compact=False,
+    )
+    definitions_table = dataframe_to_html_table(
+        dataframe=definitions_df,
+        compact=False,
+    )
+    plot_table = dataframe_to_html_table(
+        dataframe=plot_explanations_df,
+        compact=False,
+    )
 
     return f"""<!DOCTYPE html>
-<html lang=\"en\">
+<html lang="en">
 <head>
-  <meta charset=\"utf-8\">
+  <meta charset="utf-8">
   <title>Method performance summary</title>
   {style}
 </head>
 <body>
-  <div class=\"container\">
+  <div class="container">
     <h1>Method performance summary</h1>
-    <p class=\"muted\">
-      Sensitivity, recall, and true positive rate are equivalent here and are
-      all reported for convenience. The table also includes specificity,
-      false-positive rate, false-negative rate, precision, F1 score, balanced
-      accuracy, and simple limit-of-detection summaries.
+    <p class="muted">
+      Positive observations are non-shuffled rows with spike_n greater than 0.
+      Negative observations are shuffled-control rows or rows with spike_n equal
+      to 0. Detection is called using the selected threshold rule.
     </p>
 
-    <h2>Method-level performance</h2>
-    {method_table}
+    <h2>Headline comparison table</h2>
+    <p class="section-note">
+      This compact table is intended for rapid comparison across methods.
+      Green cells are favourable, amber cells are intermediate, and red cells
+      are less favourable.
+    </p>
+    {compact_table}
 
-    <h2>Detection rate by spike level</h2>
-    {by_spike_table}
+    <details open>
+      <summary>Show full method-level performance table</summary>
+      <p class="small-note">
+        This detailed table includes confusion counts, threshold statistics,
+        and the full set of derived performance metrics.
+      </p>
+      {method_table}
+    </details>
+
+    <details>
+      <summary>Show detection rate by spike level</summary>
+      <p class="small-note">
+        This table shows how often each method is called positive at each spike
+        level among positive observations.
+      </p>
+      {by_spike_table}
+    </details>
+
+    <h2>Definitions of reported performance statistics</h2>
+    {definitions_table}
+
+    <h2>How to interpret the plots in the HTML report</h2>
+    {plot_table}
   </div>
 </body>
 </html>
@@ -750,33 +1193,138 @@ def build_html_page(
 
 
 def build_html_fragment(
+    compact_df: pd.DataFrame,
     method_df: pd.DataFrame,
+    definitions_df: pd.DataFrame,
+    plot_explanations_df: pd.DataFrame,
 ) -> str:
     """
     Build an HTML fragment suitable for insertion into the main report.
 
     Parameters
     ----------
+    compact_df : pd.DataFrame
+        Compact summary table.
     method_df : pd.DataFrame
-        Method-level performance table.
+        Full method-level performance table.
+    definitions_df : pd.DataFrame
+        Metric definitions table.
+    plot_explanations_df : pd.DataFrame
+        Plot explanations table.
 
     Returns
     -------
     str
         HTML fragment.
     """
-    table_html = dataframe_to_html_table(dataframe=method_df)
+    compact_table = dataframe_to_html_table(
+        dataframe=compact_df,
+        compact=True,
+    )
+    method_table = dataframe_to_html_table(
+        dataframe=method_df,
+        compact=False,
+    )
+    definitions_table = dataframe_to_html_table(
+        dataframe=definitions_df,
+        compact=False,
+    )
+    plot_table = dataframe_to_html_table(
+        dataframe=plot_explanations_df,
+        compact=False,
+    )
+
     return f"""
-<section class=\"report-section\">
+<section class="report-section">
   <h2>Method performance summary</h2>
-  <p class=\"muted\">
+  <p class="muted">
     Sensitivity, recall, and true positive rate are equivalent here and are
     all reported for convenience. Thresholding is method-specific and based on
     the selected negative-control rule.
   </p>
-  {table_html}
+
+  <h3>Headline comparison table</h3>
+  {compact_table}
+
+  <details>
+    <summary>Show full detail table</summary>
+    {method_table}
+  </details>
+
+  <h3>Definitions of reported statistics</h3>
+  {definitions_table}
+
+  <h3>How to interpret the plots</h3>
+  {plot_table}
 </section>
 """
+
+
+def format_excel_sheet(
+    workbook_path: Path,
+    percentage_columns: set[str],
+    integer_columns: set[str],
+) -> None:
+    """
+    Apply simple formatting to all sheets in the Excel workbook.
+
+    Parameters
+    ----------
+    workbook_path : Path
+        Workbook path to format.
+    percentage_columns : set[str]
+        Columns to format as proportions.
+    integer_columns : set[str]
+        Columns to format as integers.
+    """
+    workbook = load_workbook(filename=workbook_path)
+
+    header_fill = PatternFill(fill_type="solid", fgColor="1F4E79")
+    header_font = Font(bold=True, color="FFFFFF")
+    header_alignment = Alignment(vertical="center", wrap_text=True)
+
+    for worksheet in workbook.worksheets:
+        if worksheet.max_row == 0 or worksheet.max_column == 0:
+            continue
+
+        worksheet.freeze_panes = "A2"
+        worksheet.auto_filter.ref = worksheet.dimensions
+
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_alignment
+
+        headers = [cell.value for cell in worksheet[1]]
+
+        for idx, header in enumerate(headers, start=1):
+            if header is None:
+                continue
+            column_letter = get_column_letter(idx)
+            max_len = len(str(header))
+
+            for row in worksheet.iter_rows(
+                min_row=2,
+                min_col=idx,
+                max_col=idx,
+                values_only=False,
+            ):
+                cell = row[0]
+                if cell.value is not None:
+                    max_len = max(max_len, len(str(cell.value)))
+
+                    if str(header) in percentage_columns and isinstance(
+                        cell.value, (int, float)
+                    ):
+                        cell.number_format = "0.000"
+                    elif str(header) in integer_columns and isinstance(
+                        cell.value, (int, float)
+                    ):
+                        cell.number_format = "0"
+
+            worksheet.column_dimensions[column_letter].width = min(max_len + 2, 28)
+
+    workbook.save(filename=workbook_path)
 
 
 def main() -> None:
@@ -802,26 +1350,104 @@ def main() -> None:
         detection_df=detection_df,
         threshold_df=threshold_df,
     )
+    compact_df = build_compact_table(method_df=method_df)
     by_spike_df = summarise_detection_by_spike(detection_df=detection_df)
+    definitions_df = pd.DataFrame(METRIC_DEFINITIONS)
+    plot_explanations_df = pd.DataFrame(REPORT_PLOT_EXPLANATIONS)
 
     method_tsv = out_dir / "method_performance.tsv"
+    compact_tsv = out_dir / "method_performance_compact.tsv"
     by_spike_tsv = out_dir / "method_performance_by_spike.tsv"
+    definitions_tsv = out_dir / "metric_definitions.tsv"
+    xlsx_path = out_dir / "method_performance.xlsx"
     page_html = out_dir / "method_performance.html"
     fragment_html = out_dir / "method_performance_fragment.html"
 
     method_df.to_csv(method_tsv, sep="\t", index=False)
+    compact_df.to_csv(compact_tsv, sep="\t", index=False)
     by_spike_df.to_csv(by_spike_tsv, sep="\t", index=False)
+    definitions_df.to_csv(definitions_tsv, sep="\t", index=False)
+
+    with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+        compact_df.to_excel(writer, sheet_name="headline_table", index=False)
+        method_df.to_excel(writer, sheet_name="full_method_table", index=False)
+        by_spike_df.to_excel(writer, sheet_name="by_spike", index=False)
+        definitions_df.to_excel(writer, sheet_name="definitions", index=False)
+        plot_explanations_df.to_excel(
+            writer,
+            sheet_name="plot_interpretation",
+            index=False,
+        )
+
+    format_excel_sheet(
+        workbook_path=xlsx_path,
+        percentage_columns={
+            "Sensitivity",
+            "Specificity",
+            "Precision",
+            "F1",
+            "False positive rate",
+            "False negative rate",
+            "sensitivity",
+            "recall",
+            "true_positive_rate",
+            "specificity",
+            "false_positive_rate",
+            "false_negative_rate",
+            "precision",
+            "negative_predictive_value",
+            "accuracy",
+            "balanced_accuracy",
+            "f1_score",
+            "youden_j",
+            "detection_rate",
+        },
+        integer_columns={
+            "TP",
+            "FN",
+            "FP",
+            "TN",
+            "LOD50",
+            "LOD95",
+            "tp",
+            "fn",
+            "fp",
+            "tn",
+            "n_positive",
+            "n_negative",
+            "lod50_spike_n",
+            "lod95_spike_n",
+            "spike_n",
+            "n_observations",
+            "n_detected",
+        },
+    )
+
     page_html.write_text(
-        build_html_page(method_df=method_df, by_spike_df=by_spike_df),
+        build_html_page(
+            compact_df=compact_df,
+            method_df=method_df,
+            by_spike_df=by_spike_df,
+            definitions_df=definitions_df,
+            plot_explanations_df=plot_explanations_df,
+        ),
         encoding="utf-8",
     )
     fragment_html.write_text(
-        build_html_fragment(method_df=method_df),
+        build_html_fragment(
+            compact_df=compact_df,
+            method_df=method_df,
+            definitions_df=definitions_df,
+            plot_explanations_df=plot_explanations_df,
+        ),
         encoding="utf-8",
     )
 
     print(f"[INFO] Wrote: {method_tsv}")
+    print(f"[INFO] Wrote: {compact_tsv}")
     print(f"[INFO] Wrote: {by_spike_tsv}")
+    print(f"[INFO] Wrote: {definitions_tsv}")
+    print(f"[INFO] Wrote: {xlsx_path}")
     print(f"[INFO] Wrote: {page_html}")
     print(f"[INFO] Wrote: {fragment_html}")
 
