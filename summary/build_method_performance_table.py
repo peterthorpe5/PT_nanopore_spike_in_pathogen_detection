@@ -16,6 +16,9 @@ Compared with earlier versions, this script also:
 - includes a compact headline table and a full-detail table
 - includes definitions of all reported metrics
 - includes notes on how to interpret the plots in the main HTML report
+- ranks methods in a more useful order for detection benchmarking
+- adds a species-centred summary table
+- adds a plain-language interpretation column
 
 Default interpretation
 ----------------------
@@ -38,22 +41,18 @@ All tables are written as tab-separated files unless otherwise noted.
    One row per workflow / metric / target-label method.
 2. method_performance_compact.tsv
    A reduced summary table for easier reading in reports.
-3. method_performance_by_spike.tsv
+3. method_species_summary.tsv
+   Species-centred summary table with plain-language interpretation.
+4. method_performance_by_spike.tsv
    Detection rates by spike level for each method.
-4. metric_definitions.tsv
+5. metric_definitions.tsv
    Definitions of all reported performance statistics.
-5. method_performance.xlsx
+6. method_performance.xlsx
    Formatted Excel workbook with multiple sheets.
-6. method_performance.html
+7. method_performance.html
    Standalone HTML page for review.
-7. method_performance_fragment.html
+8. method_performance_fragment.html
    HTML fragment that can be inserted into the main report.
-
-Example
--------
-python build_method_performance_table_pretty_excel.py \
-    --combined_long_tsv spikein_summary_report/combined_long.tsv \
-    --out_dir spikein_summary_report
 """
 
 from __future__ import annotations
@@ -619,6 +618,43 @@ def first_spike_meeting_rate(
     return float(detected.iloc[0])
 
 
+def build_interpretation(row: pd.Series) -> str:
+    """
+    Build a short plain-language interpretation for one method.
+
+    Parameters
+    ----------
+    row : pd.Series
+        Method summary row.
+
+    Returns
+    -------
+    str
+        Plain-language interpretation.
+    """
+    sens = row.get("sensitivity", math.nan)
+    spec = row.get("specificity", math.nan)
+    fpr = row.get("false_positive_rate", math.nan)
+    lod50 = row.get("lod50_spike_n", math.nan)
+
+    if pd.isna(sens) or pd.isna(spec):
+        return "Insufficient data for stable interpretation"
+
+    if sens >= 0.90 and spec >= 0.90:
+        if not pd.isna(lod50) and lod50 <= 10:
+            return "Strong overall balance with early detection"
+        return "Strong overall balance"
+    if sens >= 0.90 and spec < 0.50:
+        return "High sensitivity but poor negative discrimination"
+    if sens < 0.50 and spec >= 0.90:
+        return "Very conservative and misses many positives"
+    if sens < 0.50 and spec < 0.50:
+        return "Weak on both positives and negatives"
+    if not pd.isna(fpr) and fpr == 0:
+        return "No observed false positives, but sensitivity is limited"
+    return "Intermediate performance with trade-offs"
+
+
 def summarise_method_performance(
     detection_df: pd.DataFrame,
     threshold_df: pd.DataFrame,
@@ -705,6 +741,7 @@ def summarise_method_performance(
                 "workflow": workflow,
                 "metric": metric,
                 "target_label": target_label,
+                "reported_plasmodium_species": target_label,
                 "n_positive": int(positives.shape[0]),
                 "n_negative": int(negatives.shape[0]),
                 "tp": tp,
@@ -735,6 +772,7 @@ def summarise_method_performance(
 
     out_df = pd.DataFrame(rows)
     if not out_df.empty:
+        out_df["interpretation"] = out_df.apply(build_interpretation, axis=1)
         out_df = out_df.sort_values(
             by=["workflow", "metric", "target_label"]
         ).reset_index(drop=True)
@@ -788,6 +826,46 @@ def summarise_detection_by_spike(
     return grouped
 
 
+def rank_methods(method_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Rank methods in a way that prioritises balanced detection performance.
+
+    Parameters
+    ----------
+    method_df : pd.DataFrame
+        Full method-level summary table.
+
+    Returns
+    -------
+    pd.DataFrame
+        Ranked table.
+    """
+    if method_df.empty:
+        return method_df.copy()
+
+    ranked = method_df.copy()
+    ranked["lod50_rank"] = ranked["lod50_spike_n"].fillna(10**12)
+    ranked["lod95_rank"] = ranked["lod95_spike_n"].fillna(10**12)
+
+    ranked = ranked.sort_values(
+        by=[
+            "balanced_accuracy",
+            "specificity",
+            "false_positive_rate",
+            "sensitivity",
+            "lod50_rank",
+            "lod95_rank",
+            "precision",
+            "f1_score",
+        ],
+        ascending=[False, False, True, False, True, True, False, False],
+    ).reset_index(drop=True)
+
+    ranked["rank"] = range(1, len(ranked) + 1)
+    ranked = ranked.drop(columns=["lod50_rank", "lod95_rank"])
+    return ranked
+
+
 def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
     """
     Build a compact summary table for easier reading.
@@ -805,6 +883,7 @@ def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
     if method_df.empty:
         return pd.DataFrame(
             columns=[
+                "Rank",
                 "Workflow",
                 "Metric",
                 "Target",
@@ -821,11 +900,15 @@ def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
                 "FN",
                 "FP",
                 "TN",
+                "Interpretation",
             ]
         )
 
-    compact = method_df[
+    ranked = rank_methods(method_df=method_df)
+
+    compact = ranked[
         [
+            "rank",
             "workflow",
             "metric",
             "target_label",
@@ -842,11 +925,13 @@ def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
             "fn",
             "fp",
             "tn",
+            "interpretation",
         ]
     ].copy()
 
     compact = compact.rename(
         columns={
+            "rank": "Rank",
             "workflow": "Workflow",
             "metric": "Metric",
             "target_label": "Target",
@@ -863,9 +948,95 @@ def build_compact_table(method_df: pd.DataFrame) -> pd.DataFrame:
             "fn": "FN",
             "fp": "FP",
             "tn": "TN",
+            "interpretation": "Interpretation",
         }
     )
     return compact
+
+
+def build_species_summary(method_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build a species-centred summary table.
+
+    Parameters
+    ----------
+    method_df : pd.DataFrame
+        Full method-level summary table.
+
+    Returns
+    -------
+    pd.DataFrame
+        Species-centred summary table.
+    """
+    if method_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "Rank",
+                "Method",
+                "Expected target species",
+                "Reported Plasmodium species",
+                "Sensitivity",
+                "Specificity",
+                "Precision",
+                "F1",
+                "False positive rate",
+                "LOD50",
+                "LOD95",
+                "TP",
+                "FN",
+                "FP",
+                "TN",
+                "Interpretation",
+            ]
+        )
+
+    ranked = rank_methods(method_df=method_df)
+
+    species_df = ranked.copy()
+    species_df["Method"] = (
+        species_df["workflow"].astype(str) + " | " + species_df["metric"].astype(str)
+    )
+
+    species_df = species_df[
+        [
+            "rank",
+            "Method",
+            "target_label",
+            "reported_plasmodium_species",
+            "sensitivity",
+            "specificity",
+            "precision",
+            "f1_score",
+            "false_positive_rate",
+            "lod50_spike_n",
+            "lod95_spike_n",
+            "tp",
+            "fn",
+            "fp",
+            "tn",
+            "interpretation",
+        ]
+    ].rename(
+        columns={
+            "rank": "Rank",
+            "target_label": "Expected target species",
+            "reported_plasmodium_species": "Reported Plasmodium species",
+            "sensitivity": "Sensitivity",
+            "specificity": "Specificity",
+            "precision": "Precision",
+            "f1_score": "F1",
+            "false_positive_rate": "False positive rate",
+            "lod50_spike_n": "LOD50",
+            "lod95_spike_n": "LOD95",
+            "tp": "TP",
+            "fn": "FN",
+            "fp": "FP",
+            "tn": "TN",
+            "interpretation": "Interpretation",
+        }
+    )
+
+    return species_df
 
 
 def format_value(value: object) -> str:
@@ -1005,6 +1176,7 @@ def dataframe_to_html_table(
 
 def build_html_page(
     compact_df: pd.DataFrame,
+    species_df: pd.DataFrame,
     method_df: pd.DataFrame,
     by_spike_df: pd.DataFrame,
     definitions_df: pd.DataFrame,
@@ -1017,6 +1189,8 @@ def build_html_page(
     ----------
     compact_df : pd.DataFrame
         Compact summary table.
+    species_df : pd.DataFrame
+        Species-centred summary table.
     method_df : pd.DataFrame
         Full method-level performance table.
     by_spike_df : pd.DataFrame
@@ -1041,7 +1215,7 @@ def build_html_page(
         background: #f7f9fc;
       }
       .container {
-        max-width: 1400px;
+        max-width: 1460px;
         margin: 0 auto;
         padding: 32px;
         background: #ffffff;
@@ -1122,6 +1296,10 @@ def build_html_page(
         dataframe=compact_df,
         compact=True,
     )
+    species_table = dataframe_to_html_table(
+        dataframe=species_df,
+        compact=True,
+    )
     method_table = dataframe_to_html_table(
         dataframe=method_df,
         compact=False,
@@ -1158,10 +1336,17 @@ def build_html_page(
     <h2>Headline comparison table</h2>
     <p class="section-note">
       This compact table is intended for rapid comparison across methods.
-      Green cells are favourable, amber cells are intermediate, and red cells
-      are less favourable.
+      Methods are ranked primarily by balanced accuracy, then specificity,
+      then false-positive rate, then sensitivity, then LOD.
     </p>
     {compact_table}
+
+    <h2>Species-centred summary</h2>
+    <p class="section-note">
+      This table focuses on the expected target species and the reported
+      Plasmodium species for each method, with a short interpretation.
+    </p>
+    {species_table}
 
     <details open>
       <summary>Show full method-level performance table</summary>
@@ -1194,6 +1379,7 @@ def build_html_page(
 
 def build_html_fragment(
     compact_df: pd.DataFrame,
+    species_df: pd.DataFrame,
     method_df: pd.DataFrame,
     definitions_df: pd.DataFrame,
     plot_explanations_df: pd.DataFrame,
@@ -1205,6 +1391,8 @@ def build_html_fragment(
     ----------
     compact_df : pd.DataFrame
         Compact summary table.
+    species_df : pd.DataFrame
+        Species-centred summary table.
     method_df : pd.DataFrame
         Full method-level performance table.
     definitions_df : pd.DataFrame
@@ -1219,6 +1407,10 @@ def build_html_fragment(
     """
     compact_table = dataframe_to_html_table(
         dataframe=compact_df,
+        compact=True,
+    )
+    species_table = dataframe_to_html_table(
+        dataframe=species_df,
         compact=True,
     )
     method_table = dataframe_to_html_table(
@@ -1245,6 +1437,9 @@ def build_html_fragment(
 
   <h3>Headline comparison table</h3>
   {compact_table}
+
+  <h3>Species-centred summary</h3>
+  {species_table}
 
   <details>
     <summary>Show full detail table</summary>
@@ -1322,7 +1517,7 @@ def format_excel_sheet(
                     ):
                         cell.number_format = "0"
 
-            worksheet.column_dimensions[column_letter].width = min(max_len + 2, 28)
+            worksheet.column_dimensions[column_letter].width = min(max_len + 2, 34)
 
     workbook.save(filename=workbook_path)
 
@@ -1351,12 +1546,14 @@ def main() -> None:
         threshold_df=threshold_df,
     )
     compact_df = build_compact_table(method_df=method_df)
+    species_df = build_species_summary(method_df=method_df)
     by_spike_df = summarise_detection_by_spike(detection_df=detection_df)
     definitions_df = pd.DataFrame(METRIC_DEFINITIONS)
     plot_explanations_df = pd.DataFrame(REPORT_PLOT_EXPLANATIONS)
 
     method_tsv = out_dir / "method_performance.tsv"
     compact_tsv = out_dir / "method_performance_compact.tsv"
+    species_tsv = out_dir / "method_species_summary.tsv"
     by_spike_tsv = out_dir / "method_performance_by_spike.tsv"
     definitions_tsv = out_dir / "metric_definitions.tsv"
     xlsx_path = out_dir / "method_performance.xlsx"
@@ -1365,11 +1562,13 @@ def main() -> None:
 
     method_df.to_csv(method_tsv, sep="\t", index=False)
     compact_df.to_csv(compact_tsv, sep="\t", index=False)
+    species_df.to_csv(species_tsv, sep="\t", index=False)
     by_spike_df.to_csv(by_spike_tsv, sep="\t", index=False)
     definitions_df.to_csv(definitions_tsv, sep="\t", index=False)
 
     with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
         compact_df.to_excel(writer, sheet_name="headline_table", index=False)
+        species_df.to_excel(writer, sheet_name="species_summary", index=False)
         method_df.to_excel(writer, sheet_name="full_method_table", index=False)
         by_spike_df.to_excel(writer, sheet_name="by_spike", index=False)
         definitions_df.to_excel(writer, sheet_name="definitions", index=False)
@@ -1403,6 +1602,7 @@ def main() -> None:
             "detection_rate",
         },
         integer_columns={
+            "Rank",
             "TP",
             "FN",
             "FP",
@@ -1426,6 +1626,7 @@ def main() -> None:
     page_html.write_text(
         build_html_page(
             compact_df=compact_df,
+            species_df=species_df,
             method_df=method_df,
             by_spike_df=by_spike_df,
             definitions_df=definitions_df,
@@ -1436,6 +1637,7 @@ def main() -> None:
     fragment_html.write_text(
         build_html_fragment(
             compact_df=compact_df,
+            species_df=species_df,
             method_df=method_df,
             definitions_df=definitions_df,
             plot_explanations_df=plot_explanations_df,
@@ -1445,6 +1647,7 @@ def main() -> None:
 
     print(f"[INFO] Wrote: {method_tsv}")
     print(f"[INFO] Wrote: {compact_tsv}")
+    print(f"[INFO] Wrote: {species_tsv}")
     print(f"[INFO] Wrote: {by_spike_tsv}")
     print(f"[INFO] Wrote: {definitions_tsv}")
     print(f"[INFO] Wrote: {xlsx_path}")
