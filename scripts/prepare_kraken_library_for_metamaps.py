@@ -45,6 +45,7 @@ class SyntheticRecord:
     source_fasta: str
     old_taxid: int
     new_taxid: int
+    contig_id: str
     accession: str
     old_header: str
     new_header: str
@@ -275,6 +276,37 @@ def build_synthetic_name(accession: str, parent_taxid: int, rest: str) -> str:
     )
 
 
+def write_contig_header_map(
+    contig_map_tsv: Path,
+    records: List[SyntheticRecord],
+) -> None:
+    """
+    Write a sidecar TSV mapping MetaMaps contig IDs to original headers.
+
+    Parameters
+    ----------
+    contig_map_tsv : Path
+        Output TSV path for the contig mapping table.
+    records : List[SyntheticRecord]
+        Converted records to write.
+    """
+    with contig_map_tsv.open(mode="w", encoding="utf-8") as handle:
+        handle.write(
+            "contig_id\tnew_taxid\told_taxid\taccession\tsource_fasta\t"
+            "new_header\told_header\tsynthetic_name\n"
+        )
+        for record in records:
+            handle.write(
+                f"{record.contig_id}\t"
+                f"{record.new_taxid}\t"
+                f"{record.old_taxid}\t"
+                f"{record.accession}\t"
+                f"{record.source_fasta}\t"
+                f"{record.new_header}\t"
+                f"{record.old_header}\t"
+                f"{record.synthetic_name}\n"
+            )
+
 def prepare_outputs(out_dir: Path) -> Dict[str, Path]:
     """
     Prepare output directory structure.
@@ -296,6 +328,7 @@ def prepare_outputs(out_dir: Path) -> Dict[str, Path]:
         "combined_fasta": out_dir / "combined_input.fa",
         "manifest_tsv": out_dir / "manifest.tsv",
         "excluded_tsv": out_dir / "excluded_records.tsv",
+        "contig_map_tsv": out_dir / "contig_header_map.tsv",
     }
 
 
@@ -580,6 +613,8 @@ def main() -> None:
     """
     args = parse_args()
 
+    contig_i = 0
+
     input_fastas = [Path(path) for path in args.input_fastas]
     taxonomy_dir = Path(args.taxonomy_dir)
     out_dir = Path(args.out_dir)
@@ -637,12 +672,16 @@ def main() -> None:
             new_taxid = next_taxid
             next_taxid += 1
 
+            contig_i += 1
+            contig_id = f"C{contig_i}"
+
             synthetic_name = build_synthetic_name(
                 accession=accession,
                 parent_taxid=old_taxid,
                 rest=rest,
             )
-            new_header = f">kraken:taxid|{new_taxid}|{accession}"
+            new_header = f">kraken:taxid|{new_taxid}|{contig_id}|"
+            #new_header = f">kraken:taxid|{new_taxid}|{accession}"
             #new_header = f">kraken:taxid|{new_taxid}|{rest}"
 
             records.append(
@@ -650,6 +689,7 @@ def main() -> None:
                     source_fasta=str(fasta_path),
                     old_taxid=old_taxid,
                     new_taxid=new_taxid,
+                    contig_id=contig_id,
                     accession=accession,
                     old_header=header,
                     new_header=new_header,
@@ -666,6 +706,12 @@ def main() -> None:
         manifest_tsv=outputs["manifest_tsv"],
         records=records,
     )
+
+    write_contig_header_map(
+        contig_map_tsv=outputs["contig_map_tsv"],
+        records=records,
+    )
+
     write_excluded(
         excluded_tsv=outputs["excluded_tsv"],
         excluded_rows=excluded_rows,
