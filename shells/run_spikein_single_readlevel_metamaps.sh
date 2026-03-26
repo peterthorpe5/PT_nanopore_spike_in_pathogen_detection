@@ -133,24 +133,41 @@ for rep in $(seq 1 "${REPLICATES}"); do
             -q "${MIX_FASTQ_GZ}" \
             -o "${METAMAPS_PREFIX}"
 
-        metamaps classify \
+        mm_total="NA"
+        mm_target="NA"
+
+        if metamaps classify \
             -t "${THREADS}" \
             --mappings "${METAMAPS_PREFIX}" \
-            --DB "${METAMAPS_DB_DIR}"
+            --DB "${METAMAPS_DB_DIR}"; then
 
-        require_file "${WIMP_TSV}"
-        python3 "${SUMMARISE_METAMAPS_WIMP_PY}" \
-            --wimp_tsv "${WIMP_TSV}" \
-            --analysis_level definedGenomes \
-            --target_label "${TARGET_LABEL}" \
-            --out_tsv "${WIMP_SUMMARY_TSV}"
+            if [[ -s "${WIMP_TSV}" ]]; then
+                python3 "${SUMMARISE_METAMAPS_WIMP_PY}" \
+                    --wimp_tsv "${WIMP_TSV}" \
+                    --analysis_level definedGenomes \
+                    --target_label "${TARGET_LABEL}" \
+                    --out_tsv "${WIMP_SUMMARY_TSV}" || true
 
-        MM_TOTAL="$(awk 'NR==2{print $3}' "${WIMP_SUMMARY_TSV}")"
-        MM_TARGET="$(awk 'NR==2{print $4}' "${WIMP_SUMMARY_TSV}")"
+                if [[ -s "${WIMP_SUMMARY_TSV}" ]]; then
+                    mm_total="$(awk 'NR==2{print $3}' "${WIMP_SUMMARY_TSV}")"
+                    mm_target="$(awk 'NR==2{print $5}' "${WIMP_SUMMARY_TSV}")"
+                else
+                    log_warn "Empty WIMP summary for ${MIX_DIR}"
+                fi
+            else
+                log_warn "Missing or empty WIMP output for ${MIX_DIR}"
+            fi
+        else
+            log_warn "MetaMaps classify failed for ${MIX_DIR}"
+        fi
 
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "${rep}" "${spike_n}" "${MIX_FASTQ_GZ}" "${METAMAPS_PREFIX}" "${WIMP_TSV}" "${MM_TOTAL}" "${MM_TARGET}" \
+            "${rep}" "${spike_n}" "${MIX_FASTQ_GZ}" "${METAMAPS_PREFIX}" \
+            "${WIMP_TSV}" "${mm_total}" "${mm_target}" \
             >> "${SUMMARY_TSV}"
+
+
+
     done
 done
 

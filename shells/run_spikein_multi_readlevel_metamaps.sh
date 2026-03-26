@@ -92,45 +92,86 @@ unset MALLOC_ARENA_MAX || true
 
 for rep in $(seq 1 "${REPLICATES}"); do
   for spike_n in ${SPIKE_LEVELS}; do
-    MIX_DIR="${OUT_DIR}/mix_rep${rep}_n${spike_n}"; mkdir -p "${MIX_DIR}"
-    tmp_spikes=(); total_spiked=0; GENOME_INDEX=0
-    for line in "${PANEL_LINES[@]}"; do
-      GENOME_INDEX=$((GENOME_INDEX + 1))
-      sim_pool_fastq_gz="${OUT_DIR}/sim_pool_${GENOME_INDEX}.fastq.gz"
-      spike_fastq_gz="${MIX_DIR}/spike_${GENOME_INDEX}.fastq.gz"
-      spike_seed=$(( rep * 100000 + GENOME_INDEX * 1000 + spike_n ))
-      python3 "${SAMPLE_FASTQ_PY}" --fastq_gz "${sim_pool_fastq_gz}" --n_reads "${spike_n}" --seed "${spike_seed}" --out_fastq_gz "${spike_fastq_gz}"
-      tmp_spikes+=("${spike_fastq_gz}")
-      total_spiked=$(( total_spiked + spike_n ))
-    done
-    combined_spike="${MIX_DIR}/spike_combined.fastq.gz"
-    mix_args=(--background_fastq_gz "${tmp_spikes[0]}")
-    for s in "${tmp_spikes[@]:1}"; do
-      mix_args+=(--spike_fastq_gz "${s}")
-    done
-    mix_args+=(--out_fastq_gz "${combined_spike}")
-    python3 "${BUILD_MIXED_FASTQ_PY}" "${mix_args[@]}"
-    mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"; python3 "${BUILD_MIXED_FASTQ_PY}" --background_fastq_gz "${WORK_FASTQ}" --spike_fastq_gz "${combined_spike}" --out_fastq_gz "${mix_fastq_gz}"
+    mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"
+    python3 "${BUILD_MIXED_FASTQ_PY}" \
+        --background_fastq_gz "${WORK_FASTQ}" \
+        --spike_fastq_gz "${combined_spike}" \
+        --out_fastq_gz "${mix_fastq_gz}"
+
     metamaps_prefix="${MIX_DIR}/metamaps"
-    metamaps mapDirectly -t "${THREADS}" --all --maxmemory "${MAX_MEMORY_GB}" -r "${METAMAPS_DB_DIR}/DB.fa" -q "${mix_fastq_gz}" -o "${metamaps_prefix}"
-    metamaps classify -t "${THREADS}" --mappings "${metamaps_prefix}" --DB "${METAMAPS_DB_DIR}"
     wimp_tsv="${metamaps_prefix}.EM.WIMP"
-    require_file "${wimp_tsv}"
-    row="${rep}\t${spike_n}\t${total_spiked}\t${mix_fastq_gz}\t${metamaps_prefix}\t${wimp_tsv}"
-    wimp_total=''
-    for line in "${PANEL_LINES[@]}"; do
-      target_label="$(printf '%s' "${line}" | cut -f2)"
-      safe_label="$(printf '%s' "${target_label}" | tr ' ' '_' | tr '/' '_')"
-      wsum="${MIX_DIR}/metamaps.${safe_label}.summary.tsv"
-      python3 "${SUMMARISE_METAMAPS_WIMP_PY}" --wimp_tsv "${wimp_tsv}" --analysis_level definedGenomes --target_label "${target_label}" --out_tsv "${wsum}"
-      if [[ -z "${wimp_total}" ]]; then
-          wimp_total="$(awk 'NR==2{print $3}' "${wsum}")"
-          row+="\t${wimp_total}"
-      fi
-      wtarget="$(awk 'NR==2{print $4}' "${wsum}")"
-      row+="\t${wtarget}"
+    wimp_total="NA"
+
+    target_values=()
+
+    if metamaps mapDirectly \
+        -t "${THREADS}" \
+        --all \
+        --maxmemory "${MAX_MEMORY_GB}" \
+        -r "${METAMAPS_DB_DIR}/DB.fa" \
+        -q "${mix_fastq_gz}" \
+        -o "${metamaps_prefix}"; then
+
+        if metamaps classify \
+            -t "${THREADS}" \
+            --mappings "${metamaps_prefix}" \
+            --DB "${METAMAPS_DB_DIR}"; then
+
+            if [[ -s "${wimp_tsv}" ]]; then
+                for line in "${PANEL_LINES[@]}"; do
+                    target_label="$(printf '%s' "${line}" | cut -f2)"
+                    safe_label="$(printf '%s' "${target_label}" | tr ' ' '_' | tr '/' '_')"
+                    wsum="${MIX_DIR}/metamaps.${safe_label}.summary.tsv"
+
+                    python3 "${SUMMARISE_METAMAPS_WIMP_PY}" \
+                        --wimp_tsv "${wimp_tsv}" \
+                        --analysis_level definedGenomes \
+                        --target_label "${target_label}" \
+                        --out_tsv "${wsum}" || true
+
+                    if [[ "${wimp_total}" == "NA" && -s "${wsum}" ]]; then
+                        wimp_total="$(awk 'NR==2{print $3}' "${wsum}")"
+                    fi
+
+                    if [[ -s "${wsum}" ]]; then
+                        target_values+=("$(awk 'NR==2{print $5}' "${wsum}")")
+                    else
+                        target_values+=("NA")
+                    fi
+                done
+            else
+                log_error "Missing or empty WIMP output for ${MIX_DIR}"
+                for line in "${PANEL_LINES[@]}"; do
+                    target_values+=("NA")
+                done
+            fi
+        else
+            log_error "MetaMaps classify failed for ${MIX_DIR}"
+            for line in "${PANEL_LINES[@]}"; do
+                target_values+=("NA")
+            done
+        fi
+    else
+        log_error "MetaMaps mapDirectly failed for ${MIX_DIR}"
+        for line in "${PANEL_LINES[@]}"; do
+            target_values+=("NA")
+        done
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+        "${rep}" \
+        "${spike_n}" \
+        "${total_spiked}" \
+        "${mix_fastq_gz}" \
+        "${metamaps_prefix}" \
+        "${wimp_tsv}" \
+        "${wimp_total}" \
+        >> "${SUMMARY_TSV}"
+
+    for value in "${target_values[@]}"; do
+        printf '\t%s' "${value}" >> "${SUMMARY_TSV}"
     done
-    printf '%b\n' "${row}" >> "${SUMMARY_TSV}"
+    printf '\n' >> "${SUMMARY_TSV}"
   done
 done
 
