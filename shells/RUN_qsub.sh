@@ -54,13 +54,10 @@ submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
 
 
+####################
 # Metamaps workflows
-wait 
 
 conda activate metamaps
-
-wait
-
 
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_1.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_metamaps_panel1_$(date +%Y%m%d_%H%M%S)"
@@ -75,6 +72,29 @@ submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel3_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
+
+
+
+####################
+# metabuli workflows
+
+conda activate kraken16s
+
+
+export METABULI_DB_DIR="/gpfs/uod-scale-01/cluster/gjb_lab/pthorpe001/databases/metabuli/custom_metabuli_db"
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_1.tsv"
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_metabuli_panel1_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metabuli_panel2_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metabuli_panel3_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
+
 
 
 log_info "All qsub commands submitted"
