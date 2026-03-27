@@ -92,11 +92,44 @@ unset MALLOC_ARENA_MAX || true
 
 for rep in $(seq 1 "${REPLICATES}"); do
   for spike_n in ${SPIKE_LEVELS}; do
+    MIX_DIR="${OUT_DIR}/mix_rep${rep}_n${spike_n}"
+    mkdir -p "${MIX_DIR}"
+
+    tmp_spikes=()
+    total_spiked=0
+    GENOME_INDEX=0
+
+    for line in "${PANEL_LINES[@]}"; do
+      GENOME_INDEX=$((GENOME_INDEX + 1))
+      sim_pool_fastq_gz="${OUT_DIR}/sim_pool_${GENOME_INDEX}.fastq.gz"
+      spike_fastq_gz="${MIX_DIR}/spike_${GENOME_INDEX}.fastq.gz"
+      spike_seed=$(( rep * 100000 + GENOME_INDEX * 1000 + spike_n ))
+
+      python3 "${SAMPLE_FASTQ_PY}" \
+        --fastq_gz "${sim_pool_fastq_gz}" \
+        --n_reads "${spike_n}" \
+        --seed "${spike_seed}" \
+        --out_fastq_gz "${spike_fastq_gz}"
+
+      tmp_spikes+=("${spike_fastq_gz}")
+      total_spiked=$(( total_spiked + spike_n ))
+    done
+
+    combined_spike="${MIX_DIR}/spike_combined.fastq.gz"
+
+    mix_args=(--background_fastq_gz "${tmp_spikes[0]}")
+    for s in "${tmp_spikes[@]:1}"; do
+      mix_args+=(--spike_fastq_gz "${s}")
+    done
+    mix_args+=(--out_fastq_gz "${combined_spike}")
+
+    python3 "${BUILD_MIXED_FASTQ_PY}" "${mix_args[@]}"
+
     mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"
     python3 "${BUILD_MIXED_FASTQ_PY}" \
-        --background_fastq_gz "${WORK_FASTQ}" \
-        --spike_fastq_gz "${combined_spike}" \
-        --out_fastq_gz "${mix_fastq_gz}"
+      --background_fastq_gz "${WORK_FASTQ}" \
+      --spike_fastq_gz "${combined_spike}" \
+      --out_fastq_gz "${mix_fastq_gz}"
 
     metamaps_prefix="${MIX_DIR}/metamaps"
     wimp_tsv="${metamaps_prefix}.EM.WIMP"
