@@ -136,6 +136,8 @@ for rep in $(seq 1 "${REPLICATES}"); do
         mm_total="NA"
         mm_target="NA"
 
+        unset MALLOC_ARENA_MAX
+
         if metamaps classify \
             -t "${THREADS}" \
             --mappings "${METAMAPS_PREFIX}" \

@@ -112,6 +112,8 @@ for rep in $(seq 1 "${REPLICATES}"); do
         -q "${mix_fastq_gz}" \
         -o "${metamaps_prefix}"; then
 
+        unset MALLOC_ARENA_MAX
+
         if metamaps classify \
             -t "${THREADS}" \
             --mappings "${metamaps_prefix}" \
