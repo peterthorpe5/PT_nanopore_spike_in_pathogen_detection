@@ -95,6 +95,8 @@ for rep in $(seq 1 "${REPLICATES}"); do
     MIX_DIR="${OUT_DIR}/mix_rep${rep}_n${spike_n}"
     mkdir -p "${MIX_DIR}"
 
+    log_info "Processing ${MIX_DIR}"
+
     tmp_spikes=()
     total_spiked=0
     GENOME_INDEX=0
