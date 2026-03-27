@@ -18,3 +18,16 @@ python /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spik
     /home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal/library/viral/library.fna \
    /home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal/library/bacteria/library.fna \
   --out_dir /home/pthorpe001/data/databases/metabuli
+
+
+
+metabuli build \
+  /home/pthorpe001/data/databases/metabuli/custom_metabuli_db \
+  /home/pthorpe001/data/databases/metabuli/fasta_list.txt \
+  /home/pthorpe001/data/databases/metabuli/accession2taxid.tsv \
+  --taxonomy-path /home/pthorpe001/data/databases/metamaps_from_kraken_shared/taxonomy \
+  --make-library 1 \
+  --threads 12 \
+  --max-ram 180 \
+  --validate-input 1 \
+  --validate-db 1

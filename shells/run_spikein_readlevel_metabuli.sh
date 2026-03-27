@@ -54,6 +54,7 @@ REPLICATES="${REPLICATES:-3}"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
 
 MAX_RAM_GB="${MAX_RAM_GB:-120}"
+# best for nanopore
 MIN_SCORE="${MIN_SCORE:-0.008}"
 
 for x in python3 minimap2 samtools read_analysis.py simulator.py metabuli; do
