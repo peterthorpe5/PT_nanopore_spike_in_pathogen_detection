@@ -66,9 +66,11 @@ export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_1.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_metamaps_panel1_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_single_readlevel_metamaps.sh"
 
+
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel2_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
+
 
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel3_$(date +%Y%m%d_%H%M%S)"

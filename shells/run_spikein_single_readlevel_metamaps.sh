@@ -139,7 +139,7 @@ for rep in $(seq 1 "${REPLICATES}"); do
         unset MALLOC_ARENA_MAX
 
         if metamaps classify \
-            -t "${THREADS}" \
+            -t 1 \
             --mappings "${METAMAPS_PREFIX}" \
             --DB "${METAMAPS_DB_DIR}"; then
 
