@@ -1284,6 +1284,7 @@ def main() -> None:
     method_tsv = out_dir / "method_performance.tsv"
     compact_tsv = out_dir / "method_performance_compact.tsv"
     panel_species_tsv = out_dir / "method_panel_species_summary.tsv"
+    reported_species_tsv = out_dir / "reported_species_summary.tsv"
     by_spike_tsv = out_dir / "method_performance_by_spike.tsv"
     definitions_tsv = out_dir / "metric_definitions.tsv"
     xlsx_path = out_dir / "method_performance.xlsx"
@@ -1294,7 +1295,7 @@ def main() -> None:
     compact_df.to_csv(compact_tsv, sep="\t", index=False)
     panel_species_df.to_csv(panel_species_tsv, sep="\t", index=False)
     reported_species_df = build_reported_species_summary(detection_df, threshold_df)
-    reported_species_df = panel_species_df.copy()
+
     reported_species_df.to_csv(reported_species_tsv, sep="\t", index=False)
     
     
