@@ -177,20 +177,10 @@ for ((rep=1; rep<=REPLICATES; rep++)); do
 
         [[ ${#tmp_spikes[@]} -gt 0 ]] || { log_warn "No spike FASTQs for ${MIX_DIR}"; continue; }
 
-        combined_spike="${MIX_DIR}/spike_combined.fastq.gz"
-
-        mix_args=(--background_fastq_gz "${tmp_spikes[0]}")
-        for s in "${tmp_spikes[@]:1}"; do
-            mix_args+=(--spike_fastq_gz "${s}")
-        done
-        mix_args+=(--out_fastq_gz "${combined_spike}")
-
-        python3 "${BUILD_MIXED_FASTQ_PY}" "${mix_args[@]}"
-
         mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"
         python3 "${BUILD_MIXED_FASTQ_PY}" \
             --background_fastq_gz "${WORK_FASTQ}" \
-            --spike_fastq_gz "${combined_spike}" \
+            --spike_fastq_gz "${tmp_spikes[@]}" \
             --out_fastq_gz "${mix_fastq_gz}"
 
         job_id="metabuli"
