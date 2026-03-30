@@ -960,9 +960,13 @@ def extract_multi_label_map(row: pd.Series) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for column, value in row.items():
         match = re.match(r"^target_label_g(\d+)$", str(column))
-        if match and pd.notna(value):
+        if match and pd.notna(value) and str(value).strip():
             mapping[match.group(1)] = str(value)
-    return mapping
+
+    if mapping:
+        return mapping
+
+    return infer_species_label_map_from_row(row=row)
 
 
 def extract_multi_metric_map(row: pd.Series) -> dict[str, list[str]]:
