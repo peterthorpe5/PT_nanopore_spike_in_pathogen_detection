@@ -1131,6 +1131,16 @@ def build_html_page(
     </p>
     {panel_species_table}
 
+    <h2>All reported species / off-target species</h2>
+    <p class=\"section-note\">
+      This table lists all species labels reported above threshold for each
+      workflow / metric / run combination, including off-target species.
+    </p>
+    {reported_species_table}
+
+    <details open>
+      <summary>Show full method-level performance table</summary>
+
     <details open>
       <summary>Show full method-level performance table</summary>
       <p class=\"small-note\">
@@ -1277,6 +1287,7 @@ def main() -> None:
     method_df = summarise_method_performance(detection_df, threshold_df)
     compact_df = build_compact_table(method_df)
     panel_species_df = build_panel_species_summary(detection_df, threshold_df)
+    reported_species_df = build_reported_species_summary(detection_df, threshold_df)
     by_spike_df = summarise_detection_by_spike(detection_df)
     definitions_df = pd.DataFrame(METRIC_DEFINITIONS)
     plot_explanations_df = pd.DataFrame(REPORT_PLOT_EXPLANATIONS)
@@ -1284,7 +1295,7 @@ def main() -> None:
     method_tsv = out_dir / "method_performance.tsv"
     compact_tsv = out_dir / "method_performance_compact.tsv"
     panel_species_tsv = out_dir / "method_panel_species_summary.tsv"
-    reported_species_tsv = out_dir / "reported_species_summary.tsv"
+    reported_species_tsv = out_dir / "reported_offtarget_species_summary.tsv"
     by_spike_tsv = out_dir / "method_performance_by_spike.tsv"
     definitions_tsv = out_dir / "metric_definitions.tsv"
     xlsx_path = out_dir / "method_performance.xlsx"
@@ -1294,11 +1305,7 @@ def main() -> None:
     method_df.to_csv(method_tsv, sep="\t", index=False)
     compact_df.to_csv(compact_tsv, sep="\t", index=False)
     panel_species_df.to_csv(panel_species_tsv, sep="\t", index=False)
-    reported_species_df = build_reported_species_summary(detection_df, threshold_df)
-
     reported_species_df.to_csv(reported_species_tsv, sep="\t", index=False)
-    
-    
     by_spike_df.to_csv(by_spike_tsv, sep="\t", index=False)
     definitions_df.to_csv(definitions_tsv, sep="\t", index=False)
 
