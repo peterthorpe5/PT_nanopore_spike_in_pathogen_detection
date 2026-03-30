@@ -1293,7 +1293,11 @@ def main() -> None:
     method_df.to_csv(method_tsv, sep="\t", index=False)
     compact_df.to_csv(compact_tsv, sep="\t", index=False)
     panel_species_df.to_csv(panel_species_tsv, sep="\t", index=False)
+    reported_species_df = build_reported_species_summary(detection_df, threshold_df)
+    reported_species_df = panel_species_df.copy()
     reported_species_df.to_csv(reported_species_tsv, sep="\t", index=False)
+    
+    
     by_spike_df.to_csv(by_spike_tsv, sep="\t", index=False)
     definitions_df.to_csv(definitions_tsv, sep="\t", index=False)
 
