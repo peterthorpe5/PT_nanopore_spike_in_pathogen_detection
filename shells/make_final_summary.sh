@@ -11,14 +11,9 @@
 
 # get performance stats
 
-python PT_nanopore_spike_in_pathogen_detection/summary/build_method_performance_table.py \
-  --combined_long_tsv spikein_summary_report/combined_long.tsv \
-  --out_dir spikein_summary_report
-
-
 # or less conservative:
 
-python PT_nanopore_spike_in_pathogen_detection/summary/build_method_performance_table.py \
+  python PT_nanopore_spike_in_pathogen_detection/summary/build_method_performance_table_with_offtargets.py \
   --combined_long_tsv spikein_summary_report/combined_long.tsv \
   --out_dir spikein_summary_report \
   --threshold_mode fixed \
@@ -28,6 +23,8 @@ python PT_nanopore_spike_in_pathogen_detection/summary/build_method_performance_
 ## After running the above, you can then generate a report with:
 
 PT_nanopore_spike_in_pathogen_detection/shells/make_krona_from_kraken_outputs.sh
+
+
 
  python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_report_v5.py \
   --summary_dir spikein_summary_report \
