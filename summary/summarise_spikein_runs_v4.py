@@ -15,13 +15,14 @@ Supported workflow summary files
 - spikein_multi_flye_summary.tsv
 - spikein_metamaps_summary.tsv
 - spikein_multi_metamaps_summary.tsv
+- spikein_metabuli_summary.tsv
 
 Optional shuffled-control metadata are also detected when present:
 - run_metadata.tsv
 - shuffle_metadata.tsv
 
 The parser supports both the original Kraken2/minimap outputs and newer,
-additional classifiers such as MetaMaps and melon, including multi-genome
+additional classifiers such as MetaMaps, melon, and Metabuli, including multi-genome
 summary tables where metrics are encoded either as:
 - metric_g1 / metric_g2 / ...
 or as:
@@ -66,6 +67,7 @@ SUMMARY_FILE_MAP = {
     "spikein_multi_flye_summary.tsv": "multi_assembly",
     "spikein_metamaps_summary.tsv": "single_read",
     "spikein_multi_metamaps_summary.tsv": "multi_read",
+    "spikein_metabuli_summary.tsv": "metabuli_read",
 }
 
 DEFAULT_SINGLE_READ_METRICS = [
@@ -75,6 +77,9 @@ DEFAULT_SINGLE_READ_METRICS = [
     "melon_target_reads",
     "melon_estimated_reads",
     "melon_relative_abundance",
+    "metabuli_target_clade_reads",
+    "metabuli_target_direct_reads",
+    "metabuli_target_found",
 ]
 
 DEFAULT_ASSEMBLY_METRICS = [
@@ -98,6 +103,10 @@ NUMERIC_BASE_COLUMNS = [
     "melon_target_reads",
     "melon_estimated_reads",
     "melon_relative_abundance",
+    "metabuli_total_reads_in_report",
+    "metabuli_target_clade_reads",
+    "metabuli_target_direct_reads",
+    "metabuli_target_found",
     "kraken_target_contigs",
     "assembly_n_contigs",
     "assembly_total_bases",
@@ -109,13 +118,13 @@ MULTI_DYNAMIC_PATTERN = re.compile(
 
 SINGLE_TARGET_METRIC_PATTERN = re.compile(
     r"^(?:"
-    r"(?:kraken|minimap|metamaps|melon)"
+    r"(?:kraken|minimap|metamaps|melon|metabuli)"
     r"(?:_[A-Za-z0-9]+)*"
-    r")_(?:reads|alignments|contigs|abundance)$"
+    r")_(?:reads|alignments|contigs|abundance|clade_reads|direct_reads|found)$"
 )
 
 SPECIES_METRIC_PATTERN = re.compile(
-    r"^(?P<prefix>kraken|minimap|metamaps|melon)_(?P<label>.+)_(?P<suffix>reads|alignments|contigs|abundance)$"
+    r"^(?P<prefix>kraken|minimap|metamaps|melon|metabuli)_(?P<label>.+)_(?P<suffix>reads|alignments|contigs|abundance|clade_reads|direct_reads|found)$"
 )
 
 
@@ -446,38 +455,6 @@ def find_single_read_metric_columns(dataframe: pd.DataFrame) -> list[str]:
     return metric_columns
 
 
-def infer_species_label_map_from_row(row: pd.Series) -> dict[str, str]:
-    """
-    Infer genome-index to target-label mappings directly from species-named
-    metric columns in a wide-format row.
-
-    Parameters
-    ----------
-    row : pd.Series
-        Wide-format summary row.
-
-    Returns
-    -------
-    dict[str, str]
-        Mapping of genome index strings to target labels.
-    """
-    ordered_labels: list[str] = []
-
-    for column in row.index:
-        match = SPECIES_METRIC_PATTERN.match(str(column))
-        if match is None:
-            continue
-
-        raw_label = match.group("label")
-        if raw_label not in ordered_labels:
-            ordered_labels.append(raw_label)
-
-    return {
-        str(idx): titleise_target_label(label)
-        for idx, label in enumerate(ordered_labels, start=1)
-    }
-
-
 def find_single_assembly_metric_columns(dataframe: pd.DataFrame) -> list[str]:
     """
     Find assembly-level single-target metric columns present in a summary table.
@@ -530,6 +507,9 @@ def metric_name_from_parts(prefix: str, suffix: str) -> Optional[str]:
         ("melon", "reads"): "melon_target_reads",
         ("melon", "abundance"): "melon_relative_abundance",
         ("kraken", "contigs"): "kraken_target_contigs",
+        ("metabuli", "clade_reads"): "metabuli_target_clade_reads",
+        ("metabuli", "direct_reads"): "metabuli_target_direct_reads",
+        ("metabuli", "found"): "metabuli_target_found",
     }
     return mapping.get((prefix, suffix))
 
@@ -597,46 +577,36 @@ def convert_species_named_multi_metrics(
     """
     dataframe = dataframe.copy()
 
+    label_order: list[str] = []
     label_to_idx: dict[str, int] = {}
-    ordered_labels: list[str] = []
 
     for column in value_columns:
         match = SPECIES_METRIC_PATTERN.match(column)
         if match is None:
             continue
-
         raw_label = match.group("label")
         if raw_label not in label_to_idx:
-            label_to_idx[raw_label] = len(ordered_labels) + 1
-            ordered_labels.append(raw_label)
+            label_to_idx[raw_label] = len(label_order) + 1
+            label_order.append(raw_label)
 
-    for raw_label in ordered_labels:
-        genome_idx = label_to_idx[raw_label]
-        clean_label = titleise_target_label(raw_label)
-
-        dataframe.loc[:, f"target_label_g{genome_idx}"] = [
-            clean_label
-        ] * len(dataframe)
+    for raw_label, genome_idx in label_to_idx.items():
+        dataframe[f"target_label_g{genome_idx}"] = titleise_target_label(raw_label)
 
     for column in value_columns:
         match = SPECIES_METRIC_PATTERN.match(column)
         if match is None:
             continue
-
         raw_label = match.group("label")
         prefix = match.group("prefix")
         suffix = match.group("suffix")
-
         metric_name = metric_name_from_parts(prefix=prefix, suffix=suffix)
         if metric_name is None:
             continue
-
         genome_idx = label_to_idx[raw_label]
         new_column = f"{metric_name}_g{genome_idx}"
-        dataframe.loc[:, new_column] = dataframe[column]
+        dataframe[new_column] = dataframe[column]
 
     return dataframe
-
 
 
 def standardise_single_read(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -804,6 +774,41 @@ def standardise_multi_assembly(dataframe: pd.DataFrame) -> pd.DataFrame:
     return dataframe
 
 
+def collapse_multi_row_to_single_read(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """
+    Collapse a standardised one-genome multi-read table to single-read form.
+
+    Parameters
+    ----------
+    dataframe : pd.DataFrame
+        Standardised multi-read table.
+
+    Returns
+    -------
+    pd.DataFrame
+        Table rewritten to behave like a single-read summary.
+    """
+    dataframe = dataframe.copy()
+    dataframe["workflow_type"] = "single_read"
+    dataframe["target_label"] = dataframe.get(
+        "target_label",
+        dataframe.get("target_label_g1", pd.NA),
+    )
+
+    for column in list(dataframe.columns):
+        match = MULTI_DYNAMIC_PATTERN.match(str(column))
+        if match is None:
+            continue
+        genome_idx = match.group("genome_idx")
+        metric_name = match.group("metric")
+        if genome_idx == "1" and metric_name not in dataframe.columns:
+            dataframe[metric_name] = dataframe[column]
+
+    dataframe["n_genomes"] = 1
+    dataframe["target_group"] = "single"
+    return dataframe
+
+
 def parse_summary_file(
     path: Path,
     issues: list[IssueRecord],
@@ -844,6 +849,13 @@ def parse_summary_file(
         issues.append(IssueRecord("empty_table", str(path), "Summary table has no rows."))
         return None
 
+    if workflow_type == "metabuli_read":
+        metabuli_n = pd.to_numeric(dataframe.get("n_genomes"), errors="coerce")
+        if metabuli_n.notna().any() and metabuli_n.max() > 1:
+            workflow_type = "multi_read"
+        else:
+            workflow_type = "single_read"
+
     is_shuffled, run_meta_path, shuffle_meta_path = detect_shuffle_context(
         run_dir=path.parent
     )
@@ -856,7 +868,15 @@ def parse_summary_file(
         shuffle_metadata_path=shuffle_meta_path,
     )
 
-    if workflow_type == "single_read":
+    if path.name == "spikein_metabuli_summary.tsv":
+        dataframe = standardise_multi_read(dataframe=dataframe)
+        metabuli_n = pd.to_numeric(dataframe.get("n_genomes"), errors="coerce")
+        inferred_max_n = int(metabuli_n.max()) if metabuli_n.notna().any() else 0
+        if inferred_max_n <= 1:
+            dataframe = collapse_multi_row_to_single_read(dataframe=dataframe)
+        else:
+            dataframe["workflow_type"] = "multi_read"
+    elif workflow_type == "single_read":
         dataframe = standardise_single_read(dataframe=dataframe)
     elif workflow_type == "single_assembly":
         dataframe = standardise_single_assembly(dataframe=dataframe)
@@ -938,16 +958,11 @@ def extract_multi_label_map(row: pd.Series) -> dict[str, str]:
         Mapping of genome index to target label.
     """
     mapping: dict[str, str] = {}
-
     for column, value in row.items():
         match = re.match(r"^target_label_g(\d+)$", str(column))
-        if match and pd.notna(value) and str(value).strip():
+        if match and pd.notna(value):
             mapping[match.group(1)] = str(value)
-
-    if mapping:
-        return mapping
-
-    return infer_species_label_map_from_row(row=row)
+    return mapping
 
 
 def extract_multi_metric_map(row: pd.Series) -> dict[str, list[str]]:
