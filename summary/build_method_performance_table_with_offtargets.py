@@ -698,7 +698,11 @@ def build_panel_species_summary(
                 }
             )
         )
+        reported_species = sorted(set(found_species))
+        off_target_species = [x for x in reported_species if x not in expected_species]
 
+        n_reported = len(reported_species)
+        n_off_target = len(off_target_species)
         rows.append(
             {
                 "Workflow": workflow,
@@ -708,6 +712,8 @@ def build_panel_species_summary(
                 "Found species": "; ".join(found_species),
                 "Missing expected species": "; ".join(missing_species),
                 "N expected species": n_expected,
+                "N reported species": n_reported,
+                "N off-target species": n_off_target,
                 "N found species": n_found,
                 "Panel species recovery": panel_sensitivity,
                 "Threshold": threshold_panel,
