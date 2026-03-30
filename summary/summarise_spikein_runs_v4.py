@@ -1132,6 +1132,36 @@ def sanitise_filename(value: str) -> str:
     value = re.sub(r"_+", "_", value)
     return value.strip("_") or "plot"
 
+def infer_species_label_map_from_row(row: pd.Series) -> dict[str, str]:
+    """
+    Infer genome-index to target-label mappings directly from species-named
+    metric columns in a wide-format row.
+
+    Parameters
+    ----------
+    row : pd.Series
+        Wide-format summary row.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping of genome index strings to target labels.
+    """
+    ordered_labels: list[str] = []
+
+    for column in row.index:
+        match = SPECIES_METRIC_PATTERN.match(str(column))
+        if match is None:
+            continue
+
+        raw_label = match.group("label")
+        if raw_label not in ordered_labels:
+            ordered_labels.append(raw_label)
+
+    return {
+        str(idx): titleise_target_label(label)
+        for idx, label in enumerate(ordered_labels, start=1)
+    }
 
 def maybe_log_scale_axis(values: pd.Series, axis: str) -> str:
     """
