@@ -24,7 +24,7 @@ PATHOGEN_CONFIG_TSV="${PATHOGEN_CONFIG_TSV:-${DEFAULT_PATHOGEN_PANEL_3}}"
 SAMPLE_FASTQ_PY="${PY_SCRIPTS_DIR}/sample_fastq.py"
 BUILD_MIXED_FASTQ_PY="${PY_SCRIPTS_DIR}/build_mixed_fastq.py"
 COMBINE_NANOSIM_FASTQ_PY="${PY_SCRIPTS_DIR}/combine_nanosim_fastq.py"
-SUMMARISE_KRAKEN_PY="${PY_SCRIPTS_DIR}/summarise_kraken_report.py"
+SUMMARISE_KRAKEN_PY="${PY_SCRIPTS_DIR}/summarise_kraken_report_with_reported_taxa.py"
 COUNT_BED_HITS_PY="${PY_SCRIPTS_DIR}/count_bed_hits.py"
 
 REAL_FASTQ="${REAL_FASTQ:-${REAL_FASTQ_DEFAULT}}"

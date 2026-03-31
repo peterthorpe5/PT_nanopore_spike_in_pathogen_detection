@@ -51,7 +51,7 @@ PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"
 SAMPLE_FASTQ_PY="${PY_SCRIPTS_DIR}/sample_fastq.py"
 BUILD_MIXED_FASTQ_PY="${PY_SCRIPTS_DIR}/build_mixed_fastq.py"
 COMBINE_NANOSIM_FASTQ_PY="${PY_SCRIPTS_DIR}/combine_nanosim_fastq.py"
-SUMMARISE_KRAKEN_PY="${PY_SCRIPTS_DIR}/summarise_kraken_report.py"
+SUMMARISE_KRAKEN_PY="${PY_SCRIPTS_DIR}/summarise_kraken_report_with_reported_taxa.py"
 DEDUP_FASTQ_NAMES_PY="${PY_SCRIPTS_DIR}/dedup_fastq_names.py"
 ASSEMBLY_STATS_PY="${PY_SCRIPTS_DIR}/assembly_stats.py"
 
