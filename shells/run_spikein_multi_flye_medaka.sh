@@ -125,11 +125,12 @@ for rep in $(seq 1 "${REPLICATES}"); do
     total_spiked=$(( total_spiked + spike_n ))
   done
 
-  combined_spike="${MIX_DIR}/spike_combined.fastq.gz"
-  python3 "${BUILD_MIXED_FASTQ_PY}" --background_fastq_gz "${tmp_spikes[0]}" $(for s in "${tmp_spikes[@]:1}"; do printf -- ' --spike_fastq_gz %q' "$s"; done) --out_fastq_gz "${combined_spike}"
 
   mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"
-  python3 "${BUILD_MIXED_FASTQ_PY}" --background_fastq_gz "${WORK_FASTQ}" --spike_fastq_gz "${combined_spike}" --out_fastq_gz "${mix_fastq_gz}"
+  python3 "${BUILD_MIXED_FASTQ_PY}" \
+    --background_fastq_gz "${WORK_FASTQ}" \
+    --spike_fastq_gz "${tmp_spikes[@]}" \
+    --out_fastq_gz "${mix_fastq_gz}"
 
   dedup_fastq="${MIX_DIR}/mixed.dedup.fastq"
   python3 "${DEDUP_FASTQ_NAMES_PY}" --input_fastq_gz "${mix_fastq_gz}" --output_fastq "${dedup_fastq}"

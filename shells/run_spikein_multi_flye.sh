@@ -40,9 +40,15 @@ for rep in $(seq 1 "${REPLICATES}"); do
  for spike_n in ${SPIKE_LEVELS}; do
   MIX_DIR="${OUT_DIR}/mix_rep${rep}_n${spike_n}"; mkdir -p "${MIX_DIR}"; tmp_spikes=(); total_spiked=0; GENOME_INDEX=0
   for line in "${PANEL_LINES[@]}"; do GENOME_INDEX=$((GENOME_INDEX+1)); sim_pool_fastq_gz="${OUT_DIR}/sim_pool_${GENOME_INDEX}.fastq.gz"; spike_fastq_gz="${MIX_DIR}/spike_${GENOME_INDEX}.fastq.gz"; spike_seed=$(( rep * 100000 + GENOME_INDEX * 1000 + spike_n )); python3 "${SAMPLE_FASTQ_PY}" --fastq_gz "${sim_pool_fastq_gz}" --n_reads "${spike_n}" --seed "${spike_seed}" --out_fastq_gz "${spike_fastq_gz}"; tmp_spikes+=("${spike_fastq_gz}"); total_spiked=$(( total_spiked + spike_n )); done
-  combined_spike="${MIX_DIR}/spike_combined.fastq.gz"; python3 "${BUILD_MIXED_FASTQ_PY}" --background_fastq_gz "${tmp_spikes[0]}" $(for s in "${tmp_spikes[@]:1}"; do printf -- ' --spike_fastq_gz %q' "$s"; done) --out_fastq_gz "${combined_spike}"
-  mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"; python3 "${BUILD_MIXED_FASTQ_PY}" --background_fastq_gz "${WORK_FASTQ}" --spike_fastq_gz "${combined_spike}" --out_fastq_gz "${mix_fastq_gz}"
-  dedup_fastq="${MIX_DIR}/mixed.dedup.fastq"; python3 "${DEDUP_FASTQ_NAMES_PY}" --input_fastq_gz "${mix_fastq_gz}" --output_fastq "${dedup_fastq}"
+
+  mix_fastq_gz="${MIX_DIR}/mixed.fastq.gz"
+  python3 "${BUILD_MIXED_FASTQ_PY}" \
+    --background_fastq_gz "${WORK_FASTQ}" \
+    --spike_fastq_gz "${tmp_spikes[@]}" \
+    --out_fastq_gz "${mix_fastq_gz}"
+
+  dedup_fastq="${MIX_DIR}/mixed.dedup.fastq"
+  python3 "${DEDUP_FASTQ_NAMES_PY}" --input_fastq_gz "${mix_fastq_gz}" --output_fastq "${dedup_fastq}"
   flye_out_dir="${MIX_DIR}/flye_out"; assembly_fasta="${flye_out_dir}/assembly.fasta"; asm_stats_tsv="${MIX_DIR}/assembly.stats.tsv"; flye --meta --nano-hq "${dedup_fastq}" --out-dir "${flye_out_dir}" --threads "${THREADS}"; python3 "${ASSEMBLY_STATS_PY}" --assembly_fasta "${assembly_fasta}" --out_tsv "${asm_stats_tsv}"
   kraken_report="${MIX_DIR}/assembly.kraken.report.tsv"; kraken_out="${MIX_DIR}/assembly.kraken.classifications.tsv"; kraken2 --db "${KRAKEN_DB_DIR}" --threads "${THREADS}" --report "${kraken_report}" --output "${kraken_out}" "${assembly_fasta}" >/dev/null
   contig_count="$(awk 'NR==2{print $2}' "${asm_stats_tsv}")"; total_bases="$(awk 'NR==2{print $3}' "${asm_stats_tsv}")"; row="${rep}	${spike_n}	${total_spiked}	${mix_fastq_gz}	${flye_out_dir}	${assembly_fasta}	${contig_count}	${total_bases}	${kraken_report}"

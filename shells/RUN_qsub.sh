@@ -28,22 +28,27 @@ log_info "Repository: ${REPO_DIR}"
 log_info "Shells dir: ${SHELLS_DIR}"
 log_info "Configs dir: ${CONFIG_DIR}"
 
+
 # Single-genome workflows
 submit_job "${SHELLS_DIR}/run_spikein_single_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye_medaka.sh"
+
 
 # Shuffled control workflows
 submit_job "${SHELLS_DIR}/run_spikein_shuffled_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye_medaka.sh"
 
+
 # Multi-genome workflows: 2-genome panel
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
 log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye_clean.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka_clean.sh"
 
 
 # Multi-genome workflows: 3-genome panel
@@ -51,8 +56,9 @@ export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye_clean.sh"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
-
+submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka_clean.sh"
 
 ####################
 # Metamaps workflows
