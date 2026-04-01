@@ -1328,6 +1328,170 @@ def build_threshold_scan(
     return scan_df, recommendation_df, recommendation_long_df
 
 
+def build_interpretive_bands(
+    *,
+    distribution_summary_df: pd.DataFrame,
+    recommendation_long_df: pd.DataFrame,
+    min_detect_value: float,
+) -> pd.DataFrame:
+    """
+    Build a plain-language threshold band table.
+
+    Parameters
+    ----------
+    distribution_summary_df : pd.DataFrame
+        Method-level distribution summary table.
+    recommendation_long_df : pd.DataFrame
+        Long-format recommendation table.
+    min_detect_value : float
+        Minimum permitted threshold.
+
+    Returns
+    -------
+    pd.DataFrame
+        Interpretive threshold bands for each method.
+    """
+    rows: list[dict[str, object]] = []
+    if distribution_summary_df.empty:
+        return pd.DataFrame()
+
+    for _, summary_row in distribution_summary_df.iterrows():
+        workflow = summary_row["workflow"]
+        metric = summary_row["metric"]
+        target_label = summary_row["target_label"]
+
+        long_subset = recommendation_long_df.loc[
+            (recommendation_long_df["workflow"] == workflow)
+            & (recommendation_long_df["metric"] == metric)
+            & (recommendation_long_df["target_label"] == target_label)
+        ].copy()
+
+        conservative_row = long_subset.loc[
+            long_subset["rule_name"] == "conservative_zero_observed_fp"
+        ]
+        balanced_row = long_subset.loc[
+            long_subset["rule_name"] == "balanced_youden_j"
+        ]
+        target_fpr_row = long_subset.loc[
+            long_subset["rule_name"].astype(str).str.startswith("target_fpr_le_")
+        ]
+
+        conservative_threshold = math.nan
+        balanced_threshold = math.nan
+        target_fpr_threshold = math.nan
+        conservative_false_positive_rate = math.nan
+        conservative_sensitivity = math.nan
+        conservative_precision = math.nan
+        balanced_false_positive_rate = math.nan
+        balanced_sensitivity = math.nan
+        balanced_precision = math.nan
+
+        if not conservative_row.empty:
+            conservative_threshold = float(conservative_row["threshold_value"].iloc[0])
+            conservative_false_positive_rate = float(
+                conservative_row["false_positive_rate"].iloc[0]
+            )
+            conservative_sensitivity = float(
+                conservative_row["sensitivity"].iloc[0]
+            )
+            conservative_precision = float(conservative_row["precision"].iloc[0])
+
+        if not balanced_row.empty:
+            balanced_threshold = float(balanced_row["threshold_value"].iloc[0])
+            balanced_false_positive_rate = float(
+                balanced_row["false_positive_rate"].iloc[0]
+            )
+            balanced_sensitivity = float(balanced_row["sensitivity"].iloc[0])
+            balanced_precision = float(balanced_row["precision"].iloc[0])
+
+        if not target_fpr_row.empty:
+            target_fpr_threshold = float(target_fpr_row["threshold_value"].iloc[0])
+
+        background_upper = summary_row.get("negative_p95", math.nan)
+        if pd.isna(background_upper):
+            background_upper = float(min_detect_value)
+        background_upper = max(float(min_detect_value), float(background_upper))
+
+        likely_true_lower = conservative_threshold
+        if pd.isna(likely_true_lower):
+            likely_true_lower = summary_row.get("negative_max_plus_step", math.nan)
+        if pd.isna(likely_true_lower):
+            likely_true_lower = background_upper
+        likely_true_lower = max(float(background_upper), float(likely_true_lower))
+
+        if likely_true_lower > background_upper:
+            grey_zone_from = background_upper
+            grey_zone_to = likely_true_lower
+            grey_zone_note = (
+                "Values in this interval sit above the usual background range but "
+                "below the zero-observed-false-positive cut-off, so they should be "
+                "treated cautiously."
+            )
+        else:
+            grey_zone_from = math.nan
+            grey_zone_to = math.nan
+            grey_zone_note = (
+                "No practical grey zone was identified from the current data because "
+                "the usual-background and likely-real thresholds coincide."
+            )
+
+        overlap_fraction = summary_row.get("positive_below_negative_max_fraction", math.nan)
+        if pd.isna(overlap_fraction):
+            overlap_assessment = "Unknown overlap"
+        elif overlap_fraction >= 0.50:
+            overlap_assessment = "High overlap between background and true signal"
+        elif overlap_fraction >= 0.10:
+            overlap_assessment = "Moderate overlap between background and true signal"
+        else:
+            overlap_assessment = "Low overlap and clearer separation"
+
+        plain_language_recommendation = (
+            f"At or below {format_scalar(value=background_upper)} the signal is usually background. "
+            f"Above {format_scalar(value=background_upper)} and below {format_scalar(value=likely_true_lower)} is a grey zone. "
+            f"At or above {format_scalar(value=likely_true_lower)} the signal is more likely to be real in the current benchmark."
+        )
+        if pd.isna(grey_zone_from) or pd.isna(grey_zone_to):
+            plain_language_recommendation = (
+                f"At or below {format_scalar(value=background_upper)} the signal is usually background. "
+                f"At or above {format_scalar(value=likely_true_lower)} the signal is more likely to be real in the current benchmark."
+            )
+
+        rows.append(
+            {
+                "workflow": workflow,
+                "metric": metric,
+                "target_label": target_label,
+                "usually_background_at_or_below": background_upper,
+                "grey_zone_from": grey_zone_from,
+                "grey_zone_to": grey_zone_to,
+                "likely_true_signal_at_or_above": likely_true_lower,
+                "usually_background_rule": "negative_p95",
+                "likely_true_signal_rule": "conservative_zero_observed_fp",
+                "negative_p95": summary_row.get("negative_p95", math.nan),
+                "negative_max": summary_row.get("negative_max", math.nan),
+                "negative_max_plus_step": summary_row.get("negative_max_plus_step", math.nan),
+                "balanced_threshold": balanced_threshold,
+                "target_fpr_threshold": target_fpr_threshold,
+                "conservative_threshold": conservative_threshold,
+                "conservative_false_positive_rate": conservative_false_positive_rate,
+                "conservative_sensitivity": conservative_sensitivity,
+                "conservative_precision": conservative_precision,
+                "balanced_false_positive_rate": balanced_false_positive_rate,
+                "balanced_sensitivity": balanced_sensitivity,
+                "balanced_precision": balanced_precision,
+                "positive_below_negative_max_fraction": overlap_fraction,
+                "overlap_assessment": overlap_assessment,
+                "grey_zone_note": grey_zone_note,
+                "plain_language_recommendation": plain_language_recommendation,
+            }
+        )
+
+    out_df = pd.DataFrame(rows)
+    if out_df.empty:
+        return out_df
+    return out_df.sort_values(by=["workflow", "metric", "target_label"]).reset_index(drop=True)
+
+
 def maybe_symlog_x_axis(*, axis_values: pd.Series, ax: plt.Axes) -> None:
     """
     Apply a sensible symlog x-axis when values span a wide range.
@@ -1725,6 +1889,29 @@ def main() -> None:
         target_fpr=args.target_fpr,
         sd_multiplier=args.sd_multiplier,
     )
+    interpretive_bands_df = build_interpretive_bands(
+        distribution_summary_df=distribution_summary_df,
+        recommendation_long_df=recommendation_long_df,
+        min_detect_value=args.min_detect_value,
+    )
+    if not recommendation_df.empty and not interpretive_bands_df.empty:
+        recommendation_df = recommendation_df.merge(
+            interpretive_bands_df[
+                [
+                    "workflow",
+                    "metric",
+                    "target_label",
+                    "usually_background_at_or_below",
+                    "grey_zone_from",
+                    "grey_zone_to",
+                    "likely_true_signal_at_or_above",
+                    "plain_language_recommendation",
+                    "overlap_assessment",
+                ]
+            ],
+            on=["workflow", "metric", "target_label"],
+            how="left",
+        )
 
     plot_rows: list[dict[str, str]] = []
     grouped = combined_long.groupby(["workflow", "metric", "target_label"], dropna=False)
@@ -1789,6 +1976,7 @@ def main() -> None:
         "threshold_scan": threshold_scan_df,
         "threshold_recommendations": recommendation_df,
         "threshold_recommendation_long": recommendation_long_df,
+        "threshold_interpretive_bands": interpretive_bands_df,
         "threshold_plot_manifest": plot_manifest_df,
     }
     for stem, dataframe in output_tables.items():
@@ -1821,6 +2009,7 @@ def main() -> None:
         distribution_summary_df.to_excel(writer, sheet_name="distribution_summary", index=False)
         recommendation_df.to_excel(writer, sheet_name="recommendations", index=False)
         recommendation_long_df.to_excel(writer, sheet_name="recommendation_long", index=False)
+        interpretive_bands_df.to_excel(writer, sheet_name="interpretive_bands", index=False)
         threshold_scan_df.to_excel(writer, sheet_name="threshold_scan", index=False)
         plot_manifest_df.to_excel(writer, sheet_name="plot_manifest", index=False)
 
@@ -1953,11 +2142,25 @@ def main() -> None:
     </section>
 
     <section class="report-section">
+      <h2>Plain-language threshold bands</h2>
+      <p class="muted">
+        This table is the most practical summary in the report. It translates
+        the calibration results into three bands for each workflow, metric, and
+        target: a usual-background range, a grey zone where background and true
+        signal overlap, and a likely-true-signal range based on the conservative
+        zero-observed-false-positive threshold. These are empirical rules from
+        the current benchmark, not universal biological cut-offs.
+      </p>
+      {dataframe_to_html_table(dataframe=interpretive_bands_df, max_rows=100)}
+    </section>
+
+    <section class="report-section">
       <h2>Recommended thresholds</h2>
       <p class="muted">
         The wide table below brings together the main candidate thresholds for
-        each workflow, metric, and target. The long-form version in the TSV and
-        Excel output is easier to filter if you want one row per rule.
+        each workflow, metric, and target. It now also includes the plain-language
+        recommendation column. The long-form version in the TSV and Excel output
+        is easier to filter if you want one row per rule.
       </p>
       {dataframe_to_html_table(dataframe=recommendation_df, max_rows=100)}
     </section>
