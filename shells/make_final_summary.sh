@@ -33,7 +33,7 @@ PT_nanopore_spike_in_pathogen_detection/shells/make_krona_from_kraken_outputs.sh
 
 
 
-python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_replicate_report_v1.py \
+python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_replicate_report_v2.py \
   --summary_dir spikein_summary_report \
   --out_dir spikein_summary_report/replicate_resolved_report \
   --title "ONT spike-in replicate-resolved report" \

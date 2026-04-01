@@ -1069,6 +1069,325 @@ def summarise_reported_taxa_found(
     return pd.DataFrame(rows)
 
 
+
+def expected_target_map_from_combined_long(
+    *,
+    dataframe: pd.DataFrame,
+) -> dict[tuple[str, str], list[str]]:
+    """
+    Build a map of expected target labels per workflow and run.
+
+    Parameters
+    ----------
+    dataframe : pd.DataFrame
+        Normalised combined long table.
+
+    Returns
+    -------
+    dict[tuple[str, str], list[str]]
+        Mapping from ``(workflow, run_name)`` to sorted expected labels.
+    """
+    if dataframe.empty:
+        return {}
+
+    positive_mask = (~dataframe["is_shuffled_control"]) & (dataframe["total_spike_n"] > 0)
+    positive_df = dataframe.loc[positive_mask].copy()
+    if positive_df.empty:
+        return {}
+
+    mapping: dict[tuple[str, str], list[str]] = {}
+    grouped = positive_df.groupby(["workflow", "run_name"], dropna=False)
+    for (workflow, run_name), group in grouped:
+        labels = [
+            str(value).strip()
+            for value in pd.unique(group["target_label"].astype(str))
+            if str(value).strip()
+        ]
+        mapping[(str(workflow), str(run_name))] = sorted(set(labels))
+    return mapping
+
+
+def parse_semicolon_list(*, value: object) -> list[str]:
+    """
+    Split a semicolon-delimited text field into cleaned unique values.
+
+    Parameters
+    ----------
+    value : object
+        Text value to parse.
+
+    Returns
+    -------
+    list[str]
+        Cleaned list of values.
+    """
+    if pd.isna(value):
+        return []
+    items = [str(item).strip() for item in str(value).split(';')]
+    items = [item for item in items if item]
+    return sorted(set(items))
+
+
+def taxon_matches_expected_targets(
+    *,
+    taxon_name: str,
+    matched_target_labels: object,
+    expected_target_labels: list[str],
+) -> bool:
+    """
+    Return whether a reported taxon should be treated as expected.
+
+    Parameters
+    ----------
+    taxon_name : str
+        Reported taxon name.
+    matched_target_labels : object
+        Semicolon-delimited matched target labels from the sidecar table.
+    expected_target_labels : list[str]
+        Expected target labels for the run.
+
+    Returns
+    -------
+    bool
+        ``True`` when the taxon is plausibly expected for that run.
+    """
+    matched_labels = parse_semicolon_list(value=matched_target_labels)
+    if matched_labels:
+        return True
+
+    taxon_cf = str(taxon_name).strip().casefold()
+    for label in expected_target_labels:
+        label_cf = str(label).strip().casefold()
+        if not label_cf:
+            continue
+        if taxon_cf == label_cf:
+            return True
+        if label_cf in taxon_cf or taxon_cf in label_cf:
+            return True
+    return False
+
+
+def annotate_reported_taxa_detection_calls(
+    *,
+    detection_df: pd.DataFrame,
+    expected_target_map: dict[tuple[str, str], list[str]],
+) -> pd.DataFrame:
+    """
+    Add expected/off-target annotations to the taxa detection table.
+
+    Parameters
+    ----------
+    detection_df : pd.DataFrame
+        Reported-taxa detection call table.
+    expected_target_map : dict[tuple[str, str], list[str]]
+        Expected targets per workflow and run.
+
+    Returns
+    -------
+    pd.DataFrame
+        Annotated detection call table.
+    """
+    if detection_df.empty:
+        return detection_df.copy()
+
+    out_df = detection_df.copy()
+    expected_texts: list[str] = []
+    expected_flags: list[bool] = []
+    off_target_flags: list[bool] = []
+
+    for _, row in out_df.iterrows():
+        workflow = str(row.get('workflow', 'unknown'))
+        run_name = str(row.get('run_name', 'unknown_run'))
+        expected_labels = expected_target_map.get((workflow, run_name), [])
+        expected_texts.append('; '.join(expected_labels))
+        is_expected = taxon_matches_expected_targets(
+            taxon_name=str(row.get('taxon_name', '')),
+            matched_target_labels=row.get('matched_target_labels', ''),
+            expected_target_labels=expected_labels,
+        )
+        expected_flags.append(is_expected)
+        off_target_flags.append(not is_expected)
+
+    out_df['expected_target_labels'] = expected_texts
+    out_df['is_expected_taxon'] = expected_flags
+    out_df['is_off_target_taxon'] = off_target_flags
+    out_df['is_false_positive_call'] = out_df['is_negative'] & out_df['detected']
+    out_df['is_false_positive_off_target'] = (
+        out_df['is_false_positive_call'] & out_df['is_off_target_taxon']
+    )
+    return out_df
+
+
+def build_reported_taxa_off_target_run_summary(
+    *,
+    detection_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Build a run-level summary of off-target and false-positive taxa.
+
+    Parameters
+    ----------
+    detection_df : pd.DataFrame
+        Annotated reported-taxa detection call table.
+
+    Returns
+    -------
+    pd.DataFrame
+        Run-level summary table.
+    """
+    if detection_df.empty:
+        return pd.DataFrame()
+
+    rows: list[dict[str, object]] = []
+    grouped = detection_df.groupby(['workflow', 'classifier', 'run_name'], dropna=False)
+    for (workflow, classifier, run_name), group in grouped:
+        detected_df = group.loc[group['detected'] == True].copy()
+        off_target_df = detected_df.loc[detected_df['is_off_target_taxon'] == True].copy()
+        false_positive_df = detected_df.loc[detected_df['is_negative'] == True].copy()
+        false_positive_off_target_df = false_positive_df.loc[
+            false_positive_df['is_off_target_taxon'] == True
+        ].copy()
+
+        off_target_taxa = sorted(pd.unique(off_target_df['taxon_name'].astype(str)))
+        false_positive_taxa = sorted(pd.unique(false_positive_df['taxon_name'].astype(str)))
+        false_positive_off_target_taxa = sorted(
+            pd.unique(false_positive_off_target_df['taxon_name'].astype(str))
+        )
+
+        detail_parts: list[str] = []
+        for taxon_name in off_target_taxa:
+            taxon_df = off_target_df.loc[off_target_df['taxon_name'] == taxon_name].copy()
+            detected_positive = int((taxon_df['is_positive'] == True).sum())
+            detected_negative = int((taxon_df['is_negative'] == True).sum())
+            max_assigned = pd.to_numeric(taxon_df['metric_value'], errors='coerce').max()
+            mean_assigned = pd.to_numeric(taxon_df['metric_value'], errors='coerce').mean()
+            matched_targets = sorted(
+                set(
+                    label
+                    for value in taxon_df['matched_target_labels']
+                    for label in parse_semicolon_list(value=value)
+                )
+            )
+            matched_text = '; '.join(matched_targets) if matched_targets else 'none'
+            detail_parts.append(
+                f"{taxon_name}: positive_calls={detected_positive}, "
+                f"negative_calls={detected_negative}, "
+                f"max_assigned_count={format_scalar(value=max_assigned)}, "
+                f"mean_assigned_count={format_scalar(value=mean_assigned)}, "
+                f"matched_targets={matched_text}"
+            )
+
+        rows.append(
+            {
+                'workflow': workflow,
+                'classifier': classifier,
+                'run_name': run_name,
+                'expected_target_labels': str(group['expected_target_labels'].iloc[0]),
+                'n_reported_taxa_detected': int(detected_df['taxon_name'].nunique()),
+                'n_off_target_taxa_detected': len(off_target_taxa),
+                'n_false_positive_taxa': len(false_positive_taxa),
+                'n_false_positive_off_target_taxa': len(false_positive_off_target_taxa),
+                'off_target_taxa_detected': '; '.join(off_target_taxa),
+                'false_positive_taxa': '; '.join(false_positive_taxa),
+                'false_positive_off_target_taxa': '; '.join(false_positive_off_target_taxa),
+                'off_target_taxa_detail': ' | '.join(detail_parts),
+            }
+        )
+
+    out_df = pd.DataFrame(rows)
+    if out_df.empty:
+        return out_df
+    return out_df.sort_values(
+        by=['n_false_positive_taxa', 'n_off_target_taxa_detected', 'workflow', 'classifier', 'run_name'],
+        ascending=[False, False, True, True, True],
+    ).reset_index(drop=True)
+
+
+def summarise_false_positive_taxa_frequency(
+    *,
+    detection_df: pd.DataFrame,
+    group_columns: list[str],
+) -> pd.DataFrame:
+    """
+    Summarise how often false-positive taxa are detected.
+
+    Parameters
+    ----------
+    detection_df : pd.DataFrame
+        Annotated reported-taxa detection call table.
+    group_columns : list[str]
+        Columns defining the frequency panel, for example workflow and
+        classifier.
+
+    Returns
+    -------
+    pd.DataFrame
+        Frequency summary table.
+    """
+    if detection_df.empty:
+        return pd.DataFrame()
+
+    false_positive_df = detection_df.loc[detection_df['is_false_positive_call'] == True].copy()
+    if false_positive_df.empty:
+        return pd.DataFrame()
+
+    rows: list[dict[str, object]] = []
+    grouped = false_positive_df.groupby(group_columns + ['taxon_name'], dropna=False)
+    for keys, group in grouped:
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        key_map = dict(zip(group_columns + ['taxon_name'], keys))
+
+        panel_mask = pd.Series(True, index=detection_df.index)
+        for column in group_columns:
+            panel_mask &= detection_df[column].astype(str) == str(key_map[column])
+        panel_df = detection_df.loc[panel_mask & (detection_df['is_negative'] == True)].copy()
+        n_negative_observations_group = int(panel_df.shape[0])
+
+        matched_targets = sorted(
+            set(
+                label
+                for value in group['matched_target_labels']
+                for label in parse_semicolon_list(value=value)
+            )
+        )
+        metric_names = sorted(pd.unique(group['metric_name'].astype(str)))
+        assigned_counts = pd.to_numeric(group['metric_value'], errors='coerce')
+
+        rows.append(
+            {
+                **key_map,
+                'n_false_positive_observations': int(group.shape[0]),
+                'n_negative_observations_group': n_negative_observations_group,
+                'false_positive_frequency': safe_divide(
+                    numerator=int(group.shape[0]),
+                    denominator=n_negative_observations_group,
+                ),
+                'n_runs_with_false_positive': int(group['run_name'].nunique()),
+                'n_run_replicates_with_false_positive': int(
+                    group[['run_name', 'replicate']].drop_duplicates().shape[0]
+                ),
+                'is_off_target_taxon': bool(group['is_off_target_taxon'].all()),
+                'matched_target_labels': '; '.join(matched_targets),
+                'metric_names': '; '.join(metric_names),
+                'max_assigned_count': float(assigned_counts.max()) if not assigned_counts.dropna().empty else math.nan,
+                'mean_assigned_count': float(assigned_counts.mean()) if not assigned_counts.dropna().empty else math.nan,
+                'median_assigned_count': float(assigned_counts.median()) if not assigned_counts.dropna().empty else math.nan,
+            }
+        )
+
+    out_df = pd.DataFrame(rows)
+    if out_df.empty:
+        return out_df
+
+    sort_columns = [
+        'n_false_positive_observations',
+        'false_positive_frequency',
+        'max_assigned_count',
+    ] + group_columns + ['taxon_name']
+    ascending = [False, False, False] + [True] * (len(group_columns) + 1)
+    return out_df.sort_values(by=sort_columns, ascending=ascending).reset_index(drop=True)
+
 def maybe_symlog_x_axis(*, axis_values: pd.Series, ax: plt.Axes) -> None:
     """
     Apply a sensible symlog x-axis when spike levels span a wide range.
@@ -1660,8 +1979,12 @@ def main() -> None:
     reported_taxa_detection_df = pd.DataFrame()
     reported_taxa_threshold_df = pd.DataFrame()
     reported_taxa_found_df = pd.DataFrame()
+    reported_off_target_run_df = pd.DataFrame()
+    false_positive_taxa_by_tool_df = pd.DataFrame()
+    false_positive_taxa_overall_df = pd.DataFrame()
+    expected_target_map = expected_target_map_from_combined_long(dataframe=combined_long)
     if reported_taxa_path.exists() and reported_taxa_path.stat().st_size > 0:
-        reported_taxa_long = pd.read_csv(filepath_or_buffer=reported_taxa_path, sep="\t")
+        reported_taxa_long = pd.read_csv(filepath_or_buffer=reported_taxa_path, sep="	")
         reported_taxa_long = normalise_reported_taxa_long(dataframe=reported_taxa_long)
         reported_taxa_long = choose_reported_taxa_metric(dataframe=reported_taxa_long)
         reported_taxa_detection_df, reported_taxa_threshold_df = compute_detection_calls(
@@ -1675,8 +1998,23 @@ def main() -> None:
             min_detect_value=args.min_detect_value,
             sd_multiplier=args.sd_multiplier,
         )
+        reported_taxa_detection_df = annotate_reported_taxa_detection_calls(
+            detection_df=reported_taxa_detection_df,
+            expected_target_map=expected_target_map,
+        )
         reported_taxa_found_df = summarise_reported_taxa_found(
             detection_df=reported_taxa_detection_df,
+        )
+        reported_off_target_run_df = build_reported_taxa_off_target_run_summary(
+            detection_df=reported_taxa_detection_df,
+        )
+        false_positive_taxa_by_tool_df = summarise_false_positive_taxa_frequency(
+            detection_df=reported_taxa_detection_df,
+            group_columns=["workflow", "classifier"],
+        )
+        false_positive_taxa_overall_df = summarise_false_positive_taxa_frequency(
+            detection_df=reported_taxa_detection_df.assign(overall_panel="all_tools"),
+            group_columns=["overall_panel"],
         )
 
     output_tables: dict[str, pd.DataFrame] = {
@@ -1699,6 +2037,12 @@ def main() -> None:
         output_tables["reported_taxa_thresholds"] = reported_taxa_threshold_df
     if not reported_taxa_found_df.empty:
         output_tables["reported_taxa_found"] = reported_taxa_found_df
+    if not reported_off_target_run_df.empty:
+        output_tables["reported_off_target_by_run"] = reported_off_target_run_df
+    if not false_positive_taxa_by_tool_df.empty:
+        output_tables["false_positive_taxa_by_tool"] = false_positive_taxa_by_tool_df
+    if not false_positive_taxa_overall_df.empty:
+        output_tables["false_positive_taxa_overall"] = false_positive_taxa_overall_df
 
     for stem, dataframe in output_tables.items():
         dataframe.to_csv(path_or_buf=out_dir / f"{stem}.tsv", sep="\t", index=False)
@@ -1742,6 +2086,12 @@ def main() -> None:
             reported_taxa_threshold_df.to_excel(writer, sheet_name="reported_thresholds", index=False)
         if not reported_taxa_found_df.empty:
             reported_taxa_found_df.to_excel(writer, sheet_name="reported_taxa_found", index=False)
+        if not reported_off_target_run_df.empty:
+            reported_off_target_run_df.to_excel(writer, sheet_name="off_target_by_run", index=False)
+        if not false_positive_taxa_by_tool_df.empty:
+            false_positive_taxa_by_tool_df.to_excel(writer, sheet_name="fp_taxa_by_tool", index=False)
+        if not false_positive_taxa_overall_df.empty:
+            false_positive_taxa_overall_df.to_excel(writer, sheet_name="fp_taxa_overall", index=False)
         if not reported_taxa_detection_df.empty:
             reported_taxa_detection_df.to_excel(writer, sheet_name="reported_taxa_calls", index=False)
 
@@ -1771,6 +2121,10 @@ def main() -> None:
         "value",
         "metric_value",
         "max_signal",
+        "false_positive_frequency",
+        "mean_assigned_count",
+        "median_assigned_count",
+        "max_assigned_count",
     }
     integer_columns = {
         "replicate",
@@ -1797,6 +2151,14 @@ def main() -> None:
         "total_spike_n",
         "spike_n_per_genome",
         "n_taxa_found",
+        "n_reported_taxa_detected",
+        "n_off_target_taxa_detected",
+        "n_false_positive_taxa",
+        "n_false_positive_off_target_taxa",
+        "n_false_positive_observations",
+        "n_negative_observations_group",
+        "n_runs_with_false_positive",
+        "n_run_replicates_with_false_positive",
     }
     format_excel_workbook(
         workbook_path=workbook_path,
@@ -1811,6 +2173,14 @@ def main() -> None:
             ("Run-level panels", f"{run_performance_df.shape[0]:,}"),
             ("Replicate-level panels", f"{replicate_performance_df.shape[0]:,}"),
             ("Plots", f"{plot_manifest_df.shape[0]:,}"),
+            (
+                "Off-target taxa rows",
+                f"{reported_off_target_run_df.shape[0]:,}" if not reported_off_target_run_df.empty else "0",
+            ),
+            (
+                "False-positive taxa rows",
+                f"{false_positive_taxa_by_tool_df.shape[0]:,}" if not false_positive_taxa_by_tool_df.empty else "0",
+            ),
             ("Threshold rule", args.threshold_mode),
             ("Spike axis", args.spike_axis),
         ]
@@ -1894,9 +2264,35 @@ def main() -> None:
       {build_plot_gallery(plot_manifest=plot_manifest_df, plot_type='replicate_detection_heatmap', relative_plot_dir='plots')}
     </section>
 
-    <section class=\"report-section\">
+    <section class="report-section">
       <h2>Reported taxa above threshold</h2>
       {dataframe_to_html_table(dataframe=reported_taxa_found_df, max_rows=300)}
+    </section>
+
+    <section class="report-section">
+      <h2>Off-target taxa by run</h2>
+      <p class="muted">
+        The final detail column lists taxa that were reported above threshold
+        but did not match the expected target labels for that run. Assigned
+        counts are taken from the retained reported-taxa metric, which is
+        usually the primary clade-count column from the underlying tool report.
+      </p>
+      {dataframe_to_html_table(dataframe=reported_off_target_run_df, max_rows=300)}
+    </section>
+
+    <section class="report-section">
+      <h2>False-positive taxa frequency by tool</h2>
+      <p class="muted">
+        Frequency is the proportion of negative observations for that tool in
+        which the taxon was still reported above threshold. Negative
+        observations include zero-spike samples and shuffled controls.
+      </p>
+      {dataframe_to_html_table(dataframe=false_positive_taxa_by_tool_df, max_rows=300)}
+    </section>
+
+    <section class="report-section">
+      <h2>False-positive taxa frequency overall</h2>
+      {dataframe_to_html_table(dataframe=false_positive_taxa_overall_df, max_rows=300)}
     </section>
 
     <details>
