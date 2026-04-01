@@ -13,7 +13,7 @@
 
 # or less conservative:
 
-  python PT_nanopore_spike_in_pathogen_detection/summary/build_method_performance_table_with_reported_taxa.py\
+  python PT_nanopore_spike_in_pathogen_detection/summary/build_method_performance_table_with_reported_taxa.py \
     --combined_long_tsv spikein_summary_report/combined_long.tsv \
     --out_dir spikein_summary_report \
     --reported_taxa_long_tsv spikein_summary_report/reported_taxa_long.tsv \
@@ -32,6 +32,13 @@ PT_nanopore_spike_in_pathogen_detection/shells/make_krona_from_kraken_outputs.sh
     --title "ONT spike-in summary report"
 
 
+
+python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_replicate_report_v1.py \
+  --summary_dir spikein_summary_report \
+  --out_dir spikein_summary_report/replicate_resolved_report \
+  --title "ONT spike-in replicate-resolved report" \
+  --threshold_mode fixed \
+  --min_detect_value 1
 
 ########################
 ## You can also generate Krona inputs for visualisation of taxonomic classifications:

@@ -36,48 +36,44 @@ submit_job "${SHELLS_DIR}/run_spikein_single_flye_medaka.sh"
 
 
 # Shuffled control workflows
+unset PATHOGEN_CONFIG_TSV
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_shuffle_read_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_shuffled_readlevel.sh"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_shuffle_flye_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye.sh"
-submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye_medaka.sh"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_shuffle_flye_medaka_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_shuffled_flye_medaka_clean.sh"
 
 
 # Multi-genome workflows: 2-genome panel
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
 log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_read_panel2_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
-submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_flye_panel2_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_clean.sh"
-submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_flye_medaka_panel2_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka_clean.sh"
 
 
 # Multi-genome workflows: 3-genome panel
 export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 log_info "Using config: ${PATHOGEN_CONFIG_TSV}"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_read_panel3_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel.sh"
-submit_job "${SHELLS_DIR}/run_spikein_multi_flye.sh"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_flye_panel3_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_clean.sh"
-submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka.sh"
+
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_flye_medaka_panel3_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_multi_flye_medaka_clean.sh"
-
-####################
-# Metamaps workflows
-
-conda activate metamaps
-
-export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_1.tsv"
-export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_metamaps_panel1_$(date +%Y%m%d_%H%M%S)"
-submit_job "${SHELLS_DIR}/run_spikein_single_readlevel_metamaps.sh"
-
-
-export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
-export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel2_$(date +%Y%m%d_%H%M%S)"
-submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
-
-
-export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
-export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel3_$(date +%Y%m%d_%H%M%S)"
-submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
 
 
 
@@ -101,6 +97,29 @@ export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metabuli_panel3_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
 
+
+
+################################
+#   THESE DONT WROK, DONT RUN
+
+####################
+# Metamaps workflows
+
+conda activate metamaps
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_1.tsv"
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_metamaps_panel1_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_single_readlevel_metamaps.sh"
+
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_2.tsv"
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel2_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
+
+
+export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
+export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metamaps_panel3_$(date +%Y%m%d_%H%M%S)"
+submit_job "${SHELLS_DIR}/run_spikein_multi_readlevel_metamaps.sh"
 
 
 log_info "All qsub commands submitted"
