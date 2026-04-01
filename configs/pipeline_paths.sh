@@ -5,16 +5,12 @@
 
 REPO_DIR="${REPO_DIR:?REPO_DIR must be set before sourcing pipeline_paths.sh}"
 
+
 SHELLS_DIR="${SHELLS_DIR:-${REPO_DIR}/shells}"
 PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"
 CONFIG_DIR="${CONFIG_DIR:-${REPO_DIR}/configs}"
 BUILD_DB_DIR="${BUILD_DB_DIR:-${REPO_DIR}/build_DB}"
 SUMMARY_DIR="${SUMMARY_DIR:-${REPO_DIR}/summary}"
-
-DB_BASE="${DB_BASE:-/home/pthorpe001/data/databases}"
-KRAKEN_DB_DIR_DEFAULT="${KRAKEN_DB_DIR_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/kraken_bact_virus_plasmo_fungal}"
-MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.fa}"
-MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
 
 
 # Core database paths
@@ -44,18 +40,6 @@ DEFAULT_PATHOGEN_PANEL_2="${DEFAULT_PATHOGEN_PANEL_2:-${CONFIG_DIR}/pathogen_pan
 DEFAULT_PATHOGEN_PANEL_3="${DEFAULT_PATHOGEN_PANEL_3:-${CONFIG_DIR}/pathogen_panel_3.tsv}"
 DEFAULT_PATHOGEN_PANEL_3_WITH_TAXID="${DEFAULT_PATHOGEN_PANEL_3_WITH_TAXID:-${CONFIG_DIR}/pathogen_panel_3.tsv}"
 
-
-
-# Shared path and database defaults for the spike-in pipeline.
-# Source this file after REPO_DIR has been resolved.
-
-REPO_DIR="${REPO_DIR:?REPO_DIR must be set before sourcing pipeline_paths.sh}"
-
-SHELLS_DIR="${SHELLS_DIR:-${REPO_DIR}/shells}"
-PY_SCRIPTS_DIR="${PY_SCRIPTS_DIR:-${REPO_DIR}/scripts}"
-CONFIG_DIR="${CONFIG_DIR:-${REPO_DIR}/configs}"
-BUILD_DB_DIR="${BUILD_DB_DIR:-${REPO_DIR}/build_DB}"
-SUMMARY_DIR="${SUMMARY_DIR:-${REPO_DIR}/summary}"
 
 # Backwards-compatibility alias for older shells still expecting a gz variable
 MINIMAP_DB_GZ="${MINIMAP_DB_GZ:-${MINIMAP_DB_FASTA_DEFAULT}}"

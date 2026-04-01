@@ -72,7 +72,7 @@ THREADS="${THREADS:-12}"
 TRAIN_READS_N="${TRAIN_READS_N:-200000}"
 SIM_POOL_N="${SIM_POOL_N:-20000}"
 SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"
-REPLICATES="${REPLICATES:-3}"
+REPLICATES="${REPLICATES:-12}"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
 
 for executable in python3 read_analysis.py simulator.py flye kraken2 minimap2 samtools; do
