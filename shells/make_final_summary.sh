@@ -40,6 +40,16 @@ python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_replicate_re
   --threshold_mode fixed \
   --min_detect_value 1
 
+
+
+python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_threshold_calibration_report_v2.py \
+  --summary_dir spikein_summary_report \
+  --out_dir spikein_summary_report/threshold_calibration_report_v2 \
+  --title "ONT spike-in threshold calibration report" \
+  --min_detect_value 1 \
+  --target_fpr 0.05
+
+
 ########################
 ## You can also generate Krona inputs for visualisation of taxonomic classifications:
 python3 make_krona_inputs.py \
