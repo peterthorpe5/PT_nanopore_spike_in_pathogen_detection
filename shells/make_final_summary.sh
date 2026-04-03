@@ -42,7 +42,7 @@ python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_replicate_re
 
 
 
-python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_threshold_calibration_report_v2.py \
+python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_threshold_calibration_report_v3.py \
   --summary_dir spikein_summary_report \
   --out_dir spikein_summary_report/threshold_calibration_report_v3 \
   --title "ONT spike-in threshold calibration report" \
