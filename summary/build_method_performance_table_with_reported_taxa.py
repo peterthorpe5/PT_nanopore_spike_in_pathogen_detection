@@ -682,7 +682,6 @@ def build_html_page(
 </html>
 """
 
-
 def build_html_fragment(
     compact_df: pd.DataFrame,
     panel_species_df: pd.DataFrame,
@@ -692,7 +691,7 @@ def build_html_fragment(
     plot_explanations_df: pd.DataFrame,
 ) -> str:
     """
-    Build an embeddable HTML fragment.
+    Build an embeddable HTML fragment with local styling.
 
     Returns
     -------
@@ -709,10 +708,88 @@ def build_html_fragment(
     definitions_table = BASE.dataframe_to_html_table(definitions_df, compact=False)
     plot_table = BASE.dataframe_to_html_table(plot_explanations_df, compact=False)
 
+    fragment_style = """
+<style>
+  .method-performance-fragment {
+    color: #1a1a1a;
+    background: #ffffff;
+  }
+  .method-performance-fragment h2,
+  .method-performance-fragment h3 {
+    color: #1f4e79;
+  }
+  .method-performance-fragment .muted {
+    color: #666666;
+  }
+  .method-performance-fragment .small-note {
+    font-size: 13px;
+    color: #555555;
+  }
+  .method-performance-fragment .table-wrap {
+    overflow-x: auto;
+    border: 1px solid #dbe5f0;
+    border-radius: 10px;
+    margin-top: 14px;
+    background: #ffffff;
+  }
+  .method-performance-fragment .compact-wrap {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+  .method-performance-fragment .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .method-performance-fragment .data-table thead th {
+    position: sticky;
+    top: 0;
+    background: #1f4e79;
+    color: white;
+    text-align: left;
+    padding: 10px 8px;
+    white-space: nowrap;
+    z-index: 2;
+  }
+  .method-performance-fragment .data-table td {
+    border-bottom: 1px solid #e6edf5;
+    padding: 8px;
+    vertical-align: top;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .method-performance-fragment .data-table tbody tr:nth-child(even) {
+    background: #fbfdff;
+  }
+  .method-performance-fragment .cell-good {
+    background: #e9f7ef;
+    font-weight: 600;
+  }
+  .method-performance-fragment .cell-mid {
+    background: #fff8e1;
+  }
+  .method-performance-fragment .cell-bad {
+    background: #fdecea;
+  }
+  .method-performance-fragment .cell-empty {
+    color: #999999;
+  }
+  .method-performance-fragment details {
+    margin-top: 18px;
+  }
+  .method-performance-fragment summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #1f4e79;
+  }
+</style>
+"""
+
     return f"""
-<section class=\"report-section\">
+{fragment_style}
+<section class="report-section method-performance-fragment">
   <h2>Method performance summary</h2>
-  <p class=\"muted\">
+  <p class="muted">
     Sensitivity, recall, and true positive rate are equivalent here and are
     all reported for convenience. Thresholding is method-specific and based on
     the selected negative-control rule.
@@ -727,8 +804,12 @@ def build_html_fragment(
   <h3>All reported species / off-target species</h3>
   {reported_species_table}
 
-  <details>
+  <details open>
     <summary>Show full detail table</summary>
+    <p class="small-note">
+      This detailed table includes confusion counts, threshold statistics,
+      and the full set of derived performance metrics.
+    </p>
     {method_table}
   </details>
 
@@ -739,6 +820,7 @@ def build_html_fragment(
   {plot_table}
 </section>
 """
+
 
 
 def main() -> None:
