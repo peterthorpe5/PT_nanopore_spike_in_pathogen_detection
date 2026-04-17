@@ -48,12 +48,6 @@ The general strategy is:
 │   ├── create_viral_list.sh
 │   └── make_kraken_taxid_map.py
 ├── old
-│   ├── run_all.sh
-│   ├── run_spikein_multi_genome_equal_flye_v2.sh
-│   ├── run_spikein_multi_genome_mix.sh
-│   ├── run_spikein_one_sample.sh
-│   ├── run_spikein_one_sample_flye_assembly.sh
-│   └── run_spikein_shuffled_control.sh
 ├── run_spikein_multi_flye.sh
 ├── run_spikein_multi_readlevel.sh
 ├── run_spikein_shuffled_flye.sh
