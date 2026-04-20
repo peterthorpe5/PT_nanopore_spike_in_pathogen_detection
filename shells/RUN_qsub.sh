@@ -101,11 +101,15 @@ submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
 
 
 qsub "${SHELLS_DIR}/rerun_minimap_shared_db_q15_len500.sh"
+
 qsub "${SHELLS_DIR}/rerun_minimap_focused_plasdb_q15_len500.sh"
 
 qsub "${SHELLS_DIR}/rerun_single_genome_flye_assembly.sh"
+
 qsub "${SHELLS_DIR}/rerun_single_genome_flye_medaka_assembly.sh"
+
 qsub "${SHELLS_DIR}/rerun_shuffled_single_genome_flye_assembly.sh"
+
 qsub "${SHELLS_DIR}/rerun_shuffled_single_genome_flye_medaka_assembly.sh"
 
 

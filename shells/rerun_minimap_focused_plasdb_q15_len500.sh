@@ -26,7 +26,7 @@ fi
 
 source "${REPO_DIR}/configs/pipeline_paths.sh"
 
-FOCUSED_DB_FASTA="${FOCUSED_DB_FASTA:-/home/pthorpe/scratch/jcs_blood_samples/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta}"
+FOCUSED_DB_FASTA="${FOCUSED_DB_FASTA:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta}"
 require_file "${FOCUSED_DB_FASTA}"
 require_dir "${REPO_DIR}"
 require_dir "${REPO_DIR}/shells"
