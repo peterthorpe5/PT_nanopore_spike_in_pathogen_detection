@@ -1,6 +1,0 @@
-workflow	classifier	n_observations	n_positive_observations	n_negative_observations	n_positive_any_expected	n_positive_all_expected	n_positive_clean	n_positive_with_off_target	n_negative_clean	n_negative_with_any_taxon	n_negative_with_off_target	any_expected_sensitivity	all_expected_sensitivity	clean_sensitivity	positive_off_target_rate	taxonomic_specificity	taxonomic_false_positive_rate	off_target_negative_rate	clean_precision	clean_f1	mean_reported_taxa_positive	mean_off_target_taxa_positive	mean_taxonomic_precision_positive	median_off_target_taxa_positive
-multi_read	metabuli	432	396	36	396	132	0	396	0	36	36	1.0	0.333	0.0	1.0	0.0	1.0	1.0	0.0		11.455	5.407	0.094	4.0
-single_read	kraken	224	131	93	128	128	0	131	0	93	93	0.977	0.977	0.0	1.0	0.0	1.0	1.0	0.0		7.573	6.595	0.187	5.0
-single_assembly	kraken	9	0	9	0	0	0	0	0	9	9					0.0	1.0	1.0	0.0					
-multi_assembly	kraken	93	93	0	79	37	0	92	0	0	0	0.849	0.398	0.0	0.989						5.946	2.462	0.242	3.0
-multi_read	kraken	264	264	0	264	125	0	264	0	0	0	1.0	0.473	0.0	1.0						13.436	7.364	0.206	5.0
