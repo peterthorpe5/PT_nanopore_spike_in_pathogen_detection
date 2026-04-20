@@ -1,0 +1,41 @@
+workflow	classifier	taxon_name	n_false_positive_observations	n_negative_observations_group	false_positive_frequency	n_runs_with_false_positive	n_run_replicates_with_false_positive	is_off_target_taxon	matched_target_labels	metric_names	max_assigned_count	mean_assigned_count	median_assigned_count
+single_read	kraken	Plasmodium	93	844	0.11	1	12	True		kraken_reported_clade_reads	127	29.118	10
+single_read	kraken	Plasmodium (Laverania)	72	844	0.085	1	12	True		kraken_reported_clade_reads	49	12.014	5
+single_read	kraken	Plasmodium adleri (nom. inval.)	70	844	0.083	1	12	True		kraken_reported_clade_reads	47	11.443	5
+single_read	kraken	Plasmodium (Haemamoeba)	69	844	0.082	1	12	True		kraken_reported_clade_reads	45	12.029	6
+single_read	kraken	Plasmodium relictum	68	844	0.081	1	12	True		kraken_reported_clade_reads	43	11.382	6
+single_read	kraken	Plasmodium (Vinckeia)	57	844	0.068	1	12	True		kraken_reported_clade_reads	24	6.719	3
+single_read	kraken	Plasmodium (Plasmodium)	55	844	0.065	1	12	True		kraken_reported_clade_reads	12	3.945	2
+single_read	kraken	Plasmodium berghei	50	844	0.059	1	12	True		kraken_reported_clade_reads	17	5.18	3
+single_read	kraken	Plasmodium berghei ANKA	47	844	0.056	1	12	True		kraken_reported_clade_reads	15	4.681	3
+single_read	kraken	Plasmodium malariae	39	844	0.046	1	12	True		kraken_reported_clade_reads	5	2.0	2
+multi_read	metabuli	Plasmodium	36	252	0.143	3	36	False		metabuli_reported_clade_reads	13	13.0	13
+multi_read	metabuli	Plasmodium (Plasmodium)	36	252	0.143	3	36	True		metabuli_reported_clade_reads	13	13.0	13
+multi_read	metabuli	Plasmodium knowlesi	36	252	0.143	3	36	False	Plasmodium knowlesi	metabuli_reported_clade_reads	9	9.0	9
+multi_read	metabuli	Plasmodium knowlesi strain H	36	252	0.143	3	36	False	Plasmodium knowlesi	metabuli_reported_clade_reads	9	9.0	9
+multi_read	metabuli	Plasmodium cynomolgi	36	252	0.143	3	36	True		metabuli_reported_clade_reads	2	2.0	2
+multi_read	metabuli	Plasmodium cynomolgi strain B	36	252	0.143	3	36	True		metabuli_reported_clade_reads	2	2.0	2
+multi_read	metabuli	Plasmodium vivax	36	252	0.143	3	36	False	Plasmodium vivax	metabuli_reported_clade_reads	2	2.0	2
+single_read	kraken	Plasmodium gallinaceum	31	844	0.037	1	12	True		kraken_reported_clade_reads	4	1.29	1
+single_read	kraken	Plasmodium ovale	31	844	0.037	1	12	True		kraken_reported_clade_reads	4	1.516	1
+single_read	kraken	Plasmodium gonderi	23	844	0.027	1	12	True		kraken_reported_clade_reads	5	2.174	2
+single_read	kraken	Plasmodium vivax	22	844	0.026	1	12	False	Plasmodium vivax	kraken_reported_clade_reads	3	1.318	1
+single_read	kraken	Plasmodium falciparum	15	844	0.018	1	11	True		kraken_reported_clade_reads	2	1.267	1
+single_read	kraken	Plasmodium chabaudi	13	844	0.015	1	9	True		kraken_reported_clade_reads	2	1.077	1
+single_read	kraken	Plasmodium reichenowi	13	844	0.015	1	10	True		kraken_reported_clade_reads	2	1.154	1
+single_read	kraken	Plasmodium vinckei	13	844	0.015	1	8	True		kraken_reported_clade_reads	2	1.231	1
+single_read	kraken	Plasmodium yoelii	13	844	0.015	1	10	True		kraken_reported_clade_reads	2	1.154	1
+single_read	kraken	Plasmodium falciparum 365.1	11	844	0.013	1	10	True		kraken_reported_clade_reads	1	1.0	1
+single_assembly	kraken	Plasmodium	10	24	0.417	1	8	True		kraken_reported_clade_reads	1	1.0	1
+single_read	kraken	Plasmodium chabaudi chabaudi	8	844	0.009	1	7	True		kraken_reported_clade_reads	2	1.125	1
+single_read	kraken	Plasmodium praefalciparum (nom. ined.)	7	844	0.008	1	5	True		kraken_reported_clade_reads	1	1.0	1
+single_assembly	kraken	Plasmodium (Laverania)	6	24	0.25	1	6	True		kraken_reported_clade_reads	1	1.0	1
+single_read	kraken	Plasmodium vinckei brucechwatti	6	844	0.007	1	4	True		kraken_reported_clade_reads	1	1.0	1
+single_assembly	kraken	Plasmodium adleri (nom. inval.)	5	24	0.208	1	5	True		kraken_reported_clade_reads	1	1.0	1
+single_read	kraken	Plasmodium chabaudi adami	5	844	0.006	1	5	True		kraken_reported_clade_reads	1	1.0	1
+single_read	kraken	Plasmodium vinckei petteri	5	844	0.006	1	5	True		kraken_reported_clade_reads	1	1.0	1
+single_read	kraken	Plasmodium falciparum 383.1	4	844	0.005	1	4	True		kraken_reported_clade_reads	1	1.0	1
+single_read	kraken	Plasmodium sp. DRC-Itaito	4	844	0.005	1	4	True		kraken_reported_clade_reads	1	1.0	1
+single_assembly	kraken	Plasmodium (Vinckeia)	1	24	0.042	1	1	True		kraken_reported_clade_reads	1	1.0	1
+single_assembly	kraken	Plasmodium berghei	1	24	0.042	1	1	True		kraken_reported_clade_reads	1	1.0	1
+single_assembly	kraken	Plasmodium berghei ANKA	1	24	0.042	1	1	True		kraken_reported_clade_reads	1	1.0	1

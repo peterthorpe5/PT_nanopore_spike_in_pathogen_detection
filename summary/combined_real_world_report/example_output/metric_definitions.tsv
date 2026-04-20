@@ -1,0 +1,10 @@
+term	definition
+Tracked-target metrics	Existing benchmark metrics that ask whether the single pre-specified tracked target crossed threshold.
+Any-expected sensitivity	Fraction of positive observations in which at least one expected panel species was detected.
+All-expected sensitivity	Fraction of positive observations in which all expected panel species were detected, regardless of off-targets.
+Clean sensitivity	Fraction of positive observations in which all expected panel species were detected and no off-target taxa were reported above threshold.
+Taxonomic specificity	Fraction of negative observations with no taxa reported above threshold.
+Taxonomic false-positive rate	Fraction of negative observations with any taxon reported above threshold.
+Positive off-target rate	Fraction of positive observations containing at least one off-target taxon above threshold.
+Clean precision	Strict precision treating clean positive observations as true positives and any taxon-positive negative observations as false positives.
+Clean F1	Harmonic mean of clean precision and clean sensitivity.
