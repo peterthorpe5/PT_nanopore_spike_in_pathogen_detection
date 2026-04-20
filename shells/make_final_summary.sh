@@ -50,14 +50,11 @@ python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_threshold_ca
   --target_fpr 0.05
 
 
-########################
-## You can also generate Krona inputs for visualisation of taxonomic classifications:
-python3 make_krona_inputs.py \
-  --input_dirs /path/to/runs \
-  --out_dir /path/to/krona_inputs
 
- python PT_nanopore_spike_in_pathogen_detection/summary/make_krona_inputs.py \
-  --input_dirs spikein_summary_report \
-  --out_dir krona_inputs
+python3 PT_nanopore_spike_in_pathogen_detection/summary/build_combined_real_world_report.py \
+  --input_dir /path/to/your/final_summary_dir \
+  --out_dir /path/to/your/final_summary_dir/combined_real_world_report \
+  --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden"
+
 
 

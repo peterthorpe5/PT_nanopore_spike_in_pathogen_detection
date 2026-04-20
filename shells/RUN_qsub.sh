@@ -100,9 +100,9 @@ submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
 ##### REPEAT THOSE THAT FAILED
 
 
-qsub "${SHELLS_DIR}/rerun_minimap_shared_db_q15_len500.sh"
+qsub "${SHELLS_DIR}/rerun_minimap_shared_db_q15_len500_fixed.sh"
 
-qsub "${SHELLS_DIR}/rerun_minimap_focused_plasdb_q15_len500.sh"
+qsub "${SHELLS_DIR}/rerun_minimap_focused_plasdb_q15_len500_fixed.sh"
 
 qsub "${SHELLS_DIR}/rerun_single_genome_flye_assembly.sh"
 
