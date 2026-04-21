@@ -2,6 +2,8 @@
 
 ### This script is used to summarise the results of multiple spike-in runs and generate a report.
 
+mv runs_* runs/  # move all run output dirs into a single 'runs' dir for easier summarisation
+
 
   python PT_nanopore_spike_in_pathogen_detection/summary/summarise_spikein_runs_v4_reported_taxa_full.py \
     --input_dirs runs \
@@ -51,10 +53,16 @@ python PT_nanopore_spike_in_pathogen_detection/summary/make_spikein_threshold_ca
 
 
 
+
+# final real world report:
 python3 PT_nanopore_spike_in_pathogen_detection/summary/build_combined_real_world_report.py \
-  --input_dir /path/to/your/final_summary_dir \
-  --out_dir /path/to/your/final_summary_dir/combined_real_world_report \
+  --method_performance_xlsx spikein_summary_report/method_performance.xlsx \
+  --replicate_report_xlsx spikein_summary_report/replicate_resolved_report/replicate_resolved_report.xlsx \
+  --threshold_report_xlsx spikein_summary_report/threshold_calibration_report_v3/threshold_calibration_report.xlsx \
+  --out_dir spikein_summary_report/combined_real_world_report \
   --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden"
+
+
 
 
 
