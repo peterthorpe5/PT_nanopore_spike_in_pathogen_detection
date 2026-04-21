@@ -113,6 +113,14 @@ qsub "${SHELLS_DIR}/rerun_shuffled_single_genome_flye_assembly.sh"
 qsub "${SHELLS_DIR}/rerun_shuffled_single_genome_flye_medaka_assembly.sh"
 
 
+qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_fullref.sh"
+
+qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_maskedref.sh"
+
+qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
+
+qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_maskedref.sh"
+
 
 ################################
 #   THESE DONT WROK, DONT RUN
