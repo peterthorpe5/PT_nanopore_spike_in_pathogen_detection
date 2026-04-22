@@ -17,8 +17,7 @@ KRAKEN_DB_DIR_DEFAULT="${KRAKEN_DB_DIR_DEFAULT:-/home/pthorpe001/data/project_ba
 FULL_MINIMAP_DB_FASTA_DEFAULT="${FULL_MINIMAP_DB_FASTA_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.fa}"
 FULL_MINIMAP_DB_INDEX_DEFAULT="${FULL_MINIMAP_DB_INDEX_DEFAULT:-${DB_BASE}/minimap2/shared_bact_viral_plasmo_refs.mmi}"
 MASKED_MINIMAP_DB_FASTA_DEFAULT="${MASKED_MINIMAP_DB_FASTA_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta}"
-MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-${FULL_MINIMAP_DB_FASTA_DEFAULT}}"
-MINIMAP_DB_INDEX_DEFAULT="${MINIMAP_DB_INDEX_DEFAULT:-${FULL_MINIMAP_DB_INDEX_DEFAULT}}"
+MINIMAP_DB_FASTA_DEFAULT="${MINIMAP_DB_FASTA_DEFAULT:-/home/pthorpe001/data/databases/minimap2/shared_bact_viral_plasmo_refs.cleaned.fa}"
 
 # Core input data paths
 REAL_FASTQ_DEFAULT="${REAL_FASTQ_DEFAULT:-/home/pthorpe001/data/project_back_up_2024/jcs_blood_samples/MRC1023_AmM008WB.fastq.gz}"
