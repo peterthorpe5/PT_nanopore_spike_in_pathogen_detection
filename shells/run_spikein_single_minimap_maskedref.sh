@@ -14,6 +14,10 @@ log_error() {
     printf '[ERROR] %s\n' "$*" >&2
 }
 
+log_info() {
+    printf '[INFO] %s\n' "$*"
+}
+
 require_file() {
     [[ -f "$1" ]] || {
         log_error "Required file not found: $1"
@@ -30,11 +34,15 @@ else
 fi
 
 SHELLS_DIR="${SHELLS_DIR:-${REPO_DIR}/shells}"
+CONFIG_DIR="${CONFIG_DIR:-${REPO_DIR}/configs}"
+source "${CONFIG_DIR}/pipeline_paths.sh"
 
-MASKED_MINIMAP_DB_FASTA="${MASKED_MINIMAP_DB_FASTA:-/home/pthorpe001/data/project_back_up_2024/Janet_genome_databases/genome_to_use/plas_outgrps_genomes_Hard_MASKED.fasta}"
+MASKED_MINIMAP_DB_FASTA="${MASKED_MINIMAP_DB_FASTA:-${MASKED_MINIMAP_DB_FASTA_DEFAULT}}"
 require_file "${MASKED_MINIMAP_DB_FASTA}"
 
 export MINIMAP_DB_FASTA="${MASKED_MINIMAP_DB_FASTA}"
 export OUT_DIR="${OUT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_minimap_maskedref_$(date +%Y%m%d_%H%M%S)}"
+
+log_info "Single minimap masked-reference run using: ${MINIMAP_DB_FASTA}"
 
 bash "${SHELLS_DIR}/run_spikein_single_minimap_only.sh"

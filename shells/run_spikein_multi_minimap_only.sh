@@ -14,8 +14,61 @@ log_info() { printf '[INFO] %s\n' "$*"; }
 log_warn() { printf '[WARN] %s\n' "$*" >&2; }
 log_error() { printf '[ERROR] %s\n' "$*" >&2; }
 require_file() { [[ -f "$1" ]] || { log_error "Required file not found: $1"; exit 1; }; }
-require_dir() { [[ -d "$1" ]] || { log_error "Required directory not found: $1"; exit 1; }; }
 require_exe() { command -v "$1" >/dev/null 2>&1 || { log_error "Required executable not found on PATH: $1"; exit 1; }; }
+
+check_first_fasta_header() {
+    local fasta="$1"
+    python3 - "$fasta" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rt", errors="replace") as handle:
+    for line_number, line in enumerate(handle, start=1):
+        if not line.strip():
+            continue
+        if line.startswith(">"):
+            print(line[1:].strip())
+            raise SystemExit(0)
+        print(
+            f"First non-empty line does not begin with '>': line {line_number}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+print("No non-empty lines were found in the FASTA file.", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
+validate_reference_fasta() {
+    local fasta="$1"
+    local header_preview
+
+    require_file "${fasta}"
+    [[ -s "${fasta}" ]] || {
+        log_error "Reference FASTA exists but is empty: ${fasta}"
+        exit 1
+    }
+
+    header_preview="$(check_first_fasta_header "${fasta}")" || {
+        log_error "Reference FASTA does not appear to be valid FASTA: ${fasta}"
+        exit 1
+    }
+
+    log_info "Using minimap reference FASTA: ${fasta}"
+    log_info "Reference first header: ${header_preview}"
+}
+
+check_minimap_log_for_zero_targets() {
+    local log_path="$1"
+
+    if grep -q 'loaded/built the index for 0 target sequence(s)' "${log_path}"; then
+        log_error "Minimap2 reported zero target sequences in the reference."
+        log_error "Reference FASTA used: ${MINIMAP_DB_FASTA}"
+        log_error "See minimap stderr log: ${log_path}"
+        exit 1
+    fi
+}
 
 if [[ -n "${REPO_DIR:-}" ]]; then
     REPO_DIR="${REPO_DIR}"
@@ -42,11 +95,11 @@ DEPLETION_REF_FASTA="${DEPLETION_REF_FASTA:-${DEPLETION_REF_FASTA_DEFAULT}}"
 DEPLETED_FASTQ="${DEPLETED_FASTQ:-${DEPLETED_FASTQ_DEFAULT}}"
 MINIMAP_DB_FASTA="${MINIMAP_DB_FASTA:-${MINIMAP_DB_FASTA_DEFAULT}}"
 OUT_DIR="${OUT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_minimap_only_$(date +%Y%m%d_%H%M%S)}"
-THREADS="${THREADS:-12}"
+THREADS="${THREADS:-${THREADS_DEFAULT}}"
 TRAIN_READS_N="${TRAIN_READS_N:-200000}"
 SIM_POOL_N="${SIM_POOL_N:-20000}"
-SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"
-REPLICATES="${REPLICATES:-12}"
+SPIKE_LEVELS="${SPIKE_LEVELS:-${SPIKE_LEVELS_DEFAULT}}"
+REPLICATES="${REPLICATES:-${REPLICATES_DEFAULT}}"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
 MIN_MAPQ="${MIN_MAPQ:-15}"
 MIN_READ_LEN="${MIN_READ_LEN:-500}"
@@ -65,7 +118,7 @@ require_file "${COMBINE_NANOSIM_FASTQ_PY}"
 require_file "${SUMMARISE_MINIMAP_PY}"
 require_file "${REAL_FASTQ}"
 require_file "${PATHOGEN_CONFIG_TSV}"
-require_file "${MINIMAP_DB_FASTA}"
+validate_reference_fasta "${MINIMAP_DB_FASTA}"
 mkdir -p "${OUT_DIR}"
 
 mapfile -t PANEL_LINES < <(awk 'BEGIN{FS="\t"} NR>1 && NF>=2 {print $1"\t"$2}' "${PATHOGEN_CONFIG_TSV}")
@@ -166,10 +219,13 @@ for rep in $(seq 1 "${REPLICATES}"); do
         TARGET_SUMMARY_TSV="${MIX_DIR}/minimap.target_summary.tsv"
         REPORTED_TAXA_TSV="${MIX_DIR}/minimap.reported_taxa.tsv"
         META_TSV="${MIX_DIR}/minimap.meta.tsv"
+        MINIMAP_LOG="${MIX_DIR}/minimap.stderr.log"
 
-        minimap2 -t "${THREADS}" -ax map-ont "${MINIMAP_DB_FASTA}" "${MIX_FASTQ_GZ}" \
+        minimap2 -t "${THREADS}" -ax map-ont "${MINIMAP_DB_FASTA}" "${MIX_FASTQ_GZ}" 2> "${MINIMAP_LOG}" \
             | samtools view -h -q "${MIN_MAPQ}" -e "length(seq) >= ${MIN_READ_LEN}" - \
             | samtools sort -O bam -@ "${THREADS}" -o "${BAM_OUT}" -
+
+        check_minimap_log_for_zero_targets "${MINIMAP_LOG}"
 
         bamToBed -i "${BAM_OUT}" > "${BED_OUT}"
 
@@ -181,13 +237,16 @@ for rep in $(seq 1 "${REPLICATES}"); do
             --out_reported_taxa_tsv "${REPORTED_TAXA_TSV}" \
             --out_meta_tsv "${META_TSV}"
 
+        require_file "${TARGET_SUMMARY_TSV}"
+        require_file "${REPORTED_TAXA_TSV}"
+        require_file "${META_TSV}"
+
         MINIMAP_TOTAL_ALIGNMENTS="$(awk -F '\t' '$1=="total_alignments"{print $2}' "${META_TSV}")"
         MINIMAP_TOTAL_UNIQUE_READS="$(awk -F '\t' '$1=="total_unique_reads"{print $2}' "${META_TSV}")"
 
         row="${rep}\t${spike_n}\t${total_spiked}\t${N_GENOMES}\t${IS_SHUFFLED_CONTROL}\t${MIX_FASTQ_GZ}\t${BAM_OUT}\t${BED_OUT}\t${TARGET_SUMMARY_TSV}\t${REPORTED_TAXA_TSV}\t${META_TSV}\t${MINIMAP_TOTAL_ALIGNMENTS}\t${MINIMAP_TOTAL_UNIQUE_READS}"
         for line in "${PANEL_LINES[@]}"; do
             target_label="$(printf '%s' "${line}" | cut -f2)"
-            safe_label="$(printf '%s' "${target_label}" | tr ' ' '_' | tr '/' '_' | tr -cd '[:alnum:]_')"
             target_alignments="$(awk -F '\t' -v target_label="${target_label}" '$1==target_label{print $4}' "${TARGET_SUMMARY_TSV}")"
             target_unique_reads="$(awk -F '\t' -v target_label="${target_label}" '$1==target_label{print $5}' "${TARGET_SUMMARY_TSV}")"
             row+="\t${target_alignments}\t${target_unique_reads}"
