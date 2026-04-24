@@ -125,12 +125,41 @@ qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_maskedref.sh"
 
 
 
+###########
+
+export PROJECT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity"
+export REPO_DIR="${PROJECT_DIR}/PT_nanopore_spike_in_pathogen_detection"
+export SHELLS_DIR="${REPO_DIR}/shells"
+
+export MIN_MAPQ="30"
+export MIN_ALIGN_LEN="700"
+
+export OUT_DIR="${PROJECT_DIR}/runs/spikein_single_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
+qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_fullref.sh"
+
+export OUT_DIR="${PROJECT_DIR}/runs/spikein_single_minimap_maskedref_q30_len700_$(date +%Y%m%d_%H%M%S)"
+qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_maskedref.sh"
+
+export OUT_DIR="${PROJECT_DIR}/runs/spikein_multi_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
+qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
+
+export OUT_DIR="${PROJECT_DIR}/runs/spikein_multi_minimap_maskedref_q30_len700_$(date +%Y%m%d_%H%M%S)"
+qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_maskedref.sh"
 
 
+export PROJECT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity"
+export REPO_DIR="${PROJECT_DIR}/PT_nanopore_spike_in_pathogen_detection"
+export SHELLS_DIR="${REPO_DIR}/shells"
 
+export MIN_MAPQ="30"
+export MIN_READ_LEN="700"
+export MIN_ALIGN_LEN="700"
 
+export OUT_DIR="${PROJECT_DIR}/runs/spikein_single_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
+qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_fullref.sh"
 
-
+export OUT_DIR="${PROJECT_DIR}/runs/spikein_multi_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
+qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
 
 
 

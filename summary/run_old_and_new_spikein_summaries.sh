@@ -100,6 +100,12 @@ python "${REAL_WORLD_REPORT_SCRIPT}" \
     --out_dir "${OLD_OUT_DIR}/combined_real_world_report" \
     --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden (old workflow)"
 
+
+##########################################################################
+log_info "Running NEW summary workflow"
+
+
+##########################################################################
 log_info "Running NEW summary workflow"
 
 MINIMAP_INPUT_ROOTS=()
@@ -122,19 +128,6 @@ python "${SUMMARY_DIR}/minimap_specific_summary_updated.py" \
     --target_threshold_unique_reads 1 \
     --real_world_threshold_alignments 1 \
     --real_world_threshold_unique_reads 1
-
-python "${SUMMARY_DIR}/run_spikein_summary_pipeline_updated.py" \
-  --runs_dir "${RUNS_DIR}" \
-  --out_dir "${NEW_OUT_DIR}/spikein_summary_report_new" \
-  --include_minimap_rescue \
-  --single_target_label "Plasmodium vivax" \
-    --panel2_tsv "${REPO_DIR}/configs/pathogen_panel_2.tsv" \
-    --panel3_tsv "${REPO_DIR}/configs/pathogen_panel_3.tsv" \
- --threshold_mode fixed \
-  --min_detect_value 1 \
-  --target_fpr 0.05 \
-  --verbose
-
 
 python "${NEW_SUMMARISER}" \
     --input_dirs "${RUNS_DIR}" \
@@ -172,9 +165,6 @@ python "${REAL_WORLD_REPORT_SCRIPT}" \
     --threshold_report_xlsx "${NEW_OUT_DIR}/threshold_calibration_report_v3/threshold_calibration_report.xlsx" \
     --out_dir "${NEW_OUT_DIR}/combined_real_world_report" \
     --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden (new workflow)"
-
-
-
 
 log_info "Done"
 log_info "Old outputs: ${OLD_OUT_DIR}"

@@ -102,7 +102,9 @@ SPIKE_LEVELS="${SPIKE_LEVELS:-${SPIKE_LEVELS_DEFAULT}}"
 REPLICATES="${REPLICATES:-${REPLICATES_DEFAULT}}"
 DO_HOST_DEPLETION="${DO_HOST_DEPLETION:-true}"
 MIN_MAPQ="${MIN_MAPQ:-15}"
-MIN_READ_LEN="${MIN_READ_LEN:-500}"
+
+
+MIN_READ_LEN="${MIN_READ_LEN:-${MIN_ALIGN_LEN:-500}}"
 IS_SHUFFLED_CONTROL="${IS_SHUFFLED_CONTROL:-false}"
 
 require_exe python3
@@ -144,10 +146,13 @@ gzip -c "${SIM_POOL_FASTQ}" > "${SIM_POOL_FASTQ_GZ}"
 if [[ -s "${WORK_FASTQ}" ]]; then
     log_info "Reusing depleted FASTQ: ${WORK_FASTQ}"
 elif [[ "${DO_HOST_DEPLETION}" == "true" ]]; then
-    minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" \
-        | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
-        | samtools fastq -@ "${THREADS}" - \
-        | gzip -c > "${WORK_FASTQ}"
+    minimap2 -t "${THREADS}" -ax map-ont "${MINIMAP_DB_FASTA}" "${MIX_FASTQ_GZ}" 2> "${MINIMAP_LOG}" \
+        | samtools view -T "${MINIMAP_DB_FASTA}" -h -q "${MIN_MAPQ}" -e "length(seq) >= ${MIN_READ_LEN}" - \
+        | samtools sort -O bam -@ "${THREADS}" -o "${BAM_OUT}" -
+    #minimap2 -t "${THREADS}" -a -x map-ont "${DEPLETION_REF_FASTA}" "${REAL_FASTQ}" \
+    #    | samtools view -h -T "${DEPLETION_REF_FASTA}" -b -f 4 -@ "${THREADS}" - \
+    #    | samtools fastq -@ "${THREADS}" - \
+    #    | gzip -c > "${WORK_FASTQ}"
 else
     cp "${REAL_FASTQ}" "${WORK_FASTQ}"
 fi
