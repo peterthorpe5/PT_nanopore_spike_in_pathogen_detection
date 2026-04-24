@@ -206,6 +206,29 @@ def load_workbook_sheet(*, path: Path, sheet_name: str) -> pd.DataFrame:
     return pd.read_excel(path, sheet_name=sheet_name)
 
 
+def save_figure_svg_and_pdf(*, fig: plt.Figure, out_path: Path) -> tuple[Path, Path]:
+    """Save a Matplotlib figure as matching SVG and PDF files.
+
+    Parameters
+    ----------
+    fig : plt.Figure
+        Figure object to save.
+    out_path : Path
+        Output path, usually ending in ``.svg``. The PDF will be written with
+        the same stem and a ``.pdf`` suffix.
+
+    Returns
+    -------
+    tuple[Path, Path]
+        Paths to the SVG and PDF files.
+    """
+    svg_path = out_path.with_suffix(".svg")
+    pdf_path = out_path.with_suffix(".pdf")
+    fig.savefig(svg_path, format="svg")
+    fig.savefig(pdf_path, format="pdf")
+    return svg_path, pdf_path
+
+
 def build_tradeoff_dataframe(
     *,
     real_world_df: pd.DataFrame,
@@ -341,7 +364,7 @@ def make_tradeoff_plot(*, plot_df: pd.DataFrame, out_path: Path) -> None:
     ax.legend(handles=legend_handles, frameon=False, loc="upper right")
 
     fig.tight_layout()
-    fig.savefig(out_path, format="svg")
+    save_figure_svg_and_pdf(fig=fig, out_path=out_path)
     plt.close(fig)
 
 
@@ -492,7 +515,7 @@ def make_species_complexity_plot(*, plot_df: pd.DataFrame, out_path: Path) -> No
     cbar.set_label("Sensitivity")
     fig.suptitle("Species sensitivity across panel complexity", y=0.995)
     fig.tight_layout()
-    fig.savefig(out_path, format="svg")
+    save_figure_svg_and_pdf(fig=fig, out_path=out_path)
     plt.close(fig)
 
 
@@ -569,7 +592,7 @@ def make_first_detection_plot(*, plot_df: pd.DataFrame, out_path: Path) -> None:
     cbar = fig.colorbar(im, ax=ax, shrink=0.9)
     cbar.set_label("First detected spike")
     fig.tight_layout()
-    fig.savefig(out_path, format="svg")
+    save_figure_svg_and_pdf(fig=fig, out_path=out_path)
     plt.close(fig)
 
 
@@ -666,7 +689,7 @@ def make_polishing_plot(*, plot_df: pd.DataFrame, out_path: Path) -> None:
     axes[0, 0].legend(frameon=False, loc="upper left")
     fig.suptitle("Flye versus Flye+Medaka", y=0.995)
     fig.tight_layout()
-    fig.savefig(out_path, format="svg")
+    save_figure_svg_and_pdf(fig=fig, out_path=out_path)
     plt.close(fig)
 
 
@@ -754,7 +777,7 @@ def make_threshold_plot(*, plot_df: pd.DataFrame, out_path: Path) -> None:
     ax.set_title("Representative threshold bands")
     ax.grid(True, axis="x", alpha=0.25)
     fig.tight_layout()
-    fig.savefig(out_path, format="svg")
+    save_figure_svg_and_pdf(fig=fig, out_path=out_path)
     plt.close(fig)
 
 
@@ -822,6 +845,7 @@ def main() -> None:
             "plot_id": "plot01",
             "title": "Sensitivity versus taxonomic burden",
             "figure_path": str(tradeoff_plot_path),
+            "pdf_path": str(tradeoff_plot_path.with_suffix(".pdf")),
             "table_path": str(tradeoff_table_path),
             "why_useful": (
                 "Best single summary of the main paper story: early recovery "
@@ -843,6 +867,7 @@ def main() -> None:
             "plot_id": "plot02",
             "title": "Species sensitivity across panel complexity",
             "figure_path": str(species_plot_path),
+            "pdf_path": str(species_plot_path.with_suffix(".pdf")),
             "table_path": str(species_table_path),
             "why_useful": (
                 "Shows the biologically important collapse of P. falciparum "
@@ -861,6 +886,7 @@ def main() -> None:
             "plot_id": "plot03",
             "title": "Earliest reproducible detection",
             "figure_path": str(first_plot_path),
+            "pdf_path": str(first_plot_path.with_suffix(".pdf")),
             "table_path": str(first_table_path),
             "why_useful": (
                 "Summarises operational usefulness by distinguishing first "
@@ -879,6 +905,7 @@ def main() -> None:
             "plot_id": "plot04",
             "title": "Flye versus Flye+Medaka",
             "figure_path": str(polish_plot_path),
+            "pdf_path": str(polish_plot_path.with_suffix(".pdf")),
             "table_path": str(polish_table_path),
             "why_useful": (
                 "Best compact summary of the polishing question: narrower "
@@ -897,6 +924,7 @@ def main() -> None:
             "plot_id": "plot05",
             "title": "Representative threshold bands",
             "figure_path": str(threshold_plot_path),
+            "pdf_path": str(threshold_plot_path.with_suffix(".pdf")),
             "table_path": str(threshold_table_path),
             "why_useful": (
                 "Shows where low-count calls are usually background, grey-zone, "
