@@ -101,6 +101,41 @@ python "${REAL_WORLD_REPORT_SCRIPT}" \
     --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden (old workflow)"
 
 log_info "Running NEW summary workflow"
+
+MINIMAP_INPUT_ROOTS=()
+while IFS= read -r d; do
+    MINIMAP_INPUT_ROOTS+=("${d}")
+done < <(
+    find "${RUNS_DIR}" -maxdepth 1 -mindepth 1 -type d \
+        \( -name "*minimap*maskedref*" -o -name "*minimap*focused*" -o -name "*minimap*shared*" -o -name "*minimap*fullref*" \) \
+        ! -name "*broken*" \
+        | sort
+)
+
+python "${SUMMARY_DIR}/minimap_specific_summary_updated.py" \
+    --input_roots "${MINIMAP_INPUT_ROOTS[@]}" \
+    --out_dir "${NEW_OUT_DIR}/minimap_specific_summary" \
+    --single_target_label "Plasmodium vivax" \
+    --panel2_tsv "${REPO_DIR}/configs/pathogen_panel_2.tsv" \
+    --panel3_tsv "${REPO_DIR}/configs/pathogen_panel_3.tsv" \
+    --target_threshold_alignments 1 \
+    --target_threshold_unique_reads 1 \
+    --real_world_threshold_alignments 1 \
+    --real_world_threshold_unique_reads 1
+
+python "${SUMMARY_DIR}/run_spikein_summary_pipeline_updated.py" \
+  --runs_dir "${RUNS_DIR}" \
+  --out_dir "${NEW_OUT_DIR}/spikein_summary_report_new" \
+  --include_minimap_rescue \
+  --single_target_label "Plasmodium vivax" \
+    --panel2_tsv "${REPO_DIR}/configs/pathogen_panel_2.tsv" \
+    --panel3_tsv "${REPO_DIR}/configs/pathogen_panel_3.tsv" \
+ --threshold_mode fixed \
+  --min_detect_value 1 \
+  --target_fpr 0.05 \
+  --verbose
+
+
 python "${NEW_SUMMARISER}" \
     --input_dirs "${RUNS_DIR}" \
     --out_dir "${NEW_OUT_DIR}" \
@@ -139,19 +174,6 @@ python "${REAL_WORLD_REPORT_SCRIPT}" \
     --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden (new workflow)"
 
 
-python "${SUMMARY_DIR}/minimap_specific_summary.py" \
-  --input_roots \
-    /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_minimap_maskedref_20260422_104010 \
-    /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/runs_minimapfix_focused_q15_len500_20260420_142147 \
-    /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/runs_minimapfix_shared_q15_len500_20260420_141755 \
-  --out_dir /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/minimap_specific_summary \
-  --single_target_label "Plasmodium vivax" \
-  --panel2_tsv /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection/configs/pathogen_panel_2.tsv \
-  --panel3_tsv /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection/configs/pathogen_panel_3.tsv \
-  --target_threshold_alignments 1 \
-  --target_threshold_unique_reads 1 \
-  --real_world_threshold_alignments 1 \
-  --real_world_threshold_unique_reads 1
 
 
 log_info "Done"
