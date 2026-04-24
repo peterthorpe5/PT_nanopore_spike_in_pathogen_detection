@@ -63,37 +63,37 @@ log_info "Removing previous output directories"
 rm -rf "${OLD_OUT_DIR}" "${NEW_OUT_DIR}"
 
 log_info "Running OLD summary workflow"
-python3 "${OLD_SUMMARISER}" \
+python "${OLD_SUMMARISER}" \
     --input_dirs "${RUNS_DIR}" \
     --out_dir "${OLD_OUT_DIR}" \
     --verbose
 
-python3 "${METHOD_TABLE_SCRIPT}" \
+python "${METHOD_TABLE_SCRIPT}" \
     --combined_long_tsv "${OLD_OUT_DIR}/combined_long.tsv" \
     --out_dir "${OLD_OUT_DIR}" \
     --reported_taxa_long_tsv "${OLD_OUT_DIR}/reported_taxa_long.tsv" \
     --threshold_mode fixed \
     --min_detect_value 1
 
-python3 "${MAIN_REPORT_SCRIPT}" \
+python "${MAIN_REPORT_SCRIPT}" \
     --summary_dir "${OLD_OUT_DIR}" \
     --title "ONT spike-in summary report (old workflow)"
 
-python3 "${REPLICATE_REPORT_SCRIPT}" \
+python "${REPLICATE_REPORT_SCRIPT}" \
     --summary_dir "${OLD_OUT_DIR}" \
     --out_dir "${OLD_OUT_DIR}/replicate_resolved_report" \
     --title "ONT spike-in replicate-resolved report (old workflow)" \
     --threshold_mode fixed \
     --min_detect_value 1
 
-python3 "${THRESHOLD_REPORT_SCRIPT}" \
+python "${THRESHOLD_REPORT_SCRIPT}" \
     --summary_dir "${OLD_OUT_DIR}" \
     --out_dir "${OLD_OUT_DIR}/threshold_calibration_report_v3" \
     --title "ONT spike-in threshold calibration report (old workflow)" \
     --min_detect_value 1 \
     --target_fpr 0.05
 
-python3 "${REAL_WORLD_REPORT_SCRIPT}" \
+python "${REAL_WORLD_REPORT_SCRIPT}" \
     --method_performance_xlsx "${OLD_OUT_DIR}/method_performance.xlsx" \
     --replicate_report_xlsx "${OLD_OUT_DIR}/replicate_resolved_report/replicate_resolved_report.xlsx" \
     --threshold_report_xlsx "${OLD_OUT_DIR}/threshold_calibration_report_v3/threshold_calibration_report.xlsx" \
@@ -101,42 +101,58 @@ python3 "${REAL_WORLD_REPORT_SCRIPT}" \
     --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden (old workflow)"
 
 log_info "Running NEW summary workflow"
-python3 "${NEW_SUMMARISER}" \
+python "${NEW_SUMMARISER}" \
     --input_dirs "${RUNS_DIR}" \
     --out_dir "${NEW_OUT_DIR}" \
     --verbose
 
-python3 "${METHOD_TABLE_SCRIPT}" \
+python "${METHOD_TABLE_SCRIPT}" \
     --combined_long_tsv "${NEW_OUT_DIR}/combined_long.tsv" \
     --out_dir "${NEW_OUT_DIR}" \
     --reported_taxa_long_tsv "${NEW_OUT_DIR}/reported_taxa_long.tsv" \
     --threshold_mode fixed \
     --min_detect_value 1
 
-python3 "${MAIN_REPORT_SCRIPT}" \
+python "${MAIN_REPORT_SCRIPT}" \
     --summary_dir "${NEW_OUT_DIR}" \
     --title "ONT spike-in summary report (new workflow)"
 
-python3 "${REPLICATE_REPORT_SCRIPT}" \
+python "${REPLICATE_REPORT_SCRIPT}" \
     --summary_dir "${NEW_OUT_DIR}" \
     --out_dir "${NEW_OUT_DIR}/replicate_resolved_report" \
     --title "ONT spike-in replicate-resolved report (new workflow)" \
     --threshold_mode fixed \
     --min_detect_value 1
 
-python3 "${THRESHOLD_REPORT_SCRIPT}" \
+python "${THRESHOLD_REPORT_SCRIPT}" \
     --summary_dir "${NEW_OUT_DIR}" \
     --out_dir "${NEW_OUT_DIR}/threshold_calibration_report_v3" \
     --title "ONT spike-in threshold calibration report (new workflow)" \
     --min_detect_value 1 \
     --target_fpr 0.05
 
-python3 "${REAL_WORLD_REPORT_SCRIPT}" \
+python "${REAL_WORLD_REPORT_SCRIPT}" \
     --method_performance_xlsx "${NEW_OUT_DIR}/method_performance.xlsx" \
     --replicate_report_xlsx "${NEW_OUT_DIR}/replicate_resolved_report/replicate_resolved_report.xlsx" \
     --threshold_report_xlsx "${NEW_OUT_DIR}/threshold_calibration_report_v3/threshold_calibration_report.xlsx" \
     --out_dir "${NEW_OUT_DIR}/combined_real_world_report" \
     --report_title "Combined ONT spike-in benchmark report with real-world taxonomic burden (new workflow)"
+
+
+python "${SUMMARY_DIR}/minimap_specific_summary.py" \
+  --input_roots \
+    /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_single_minimap_maskedref_20260422_104010 \
+    /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/runs_minimapfix_focused_q15_len500_20260420_142147 \
+    /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/runs_minimapfix_shared_q15_len500_20260420_141755 \
+  --out_dir /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/minimap_specific_summary \
+  --single_target_label "Plasmodium vivax" \
+  --panel2_tsv /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection/configs/pathogen_panel_2.tsv \
+  --panel3_tsv /home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection/configs/pathogen_panel_3.tsv \
+  --target_threshold_alignments 1 \
+  --target_threshold_unique_reads 1 \
+  --real_world_threshold_alignments 1 \
+  --real_world_threshold_unique_reads 1
+
 
 log_info "Done"
 log_info "Old outputs: ${OLD_OUT_DIR}"
