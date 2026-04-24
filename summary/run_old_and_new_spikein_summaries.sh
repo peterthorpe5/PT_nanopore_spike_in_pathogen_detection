@@ -169,3 +169,16 @@ python "${REAL_WORLD_REPORT_SCRIPT}" \
 log_info "Done"
 log_info "Old outputs: ${OLD_OUT_DIR}"
 log_info "New outputs: ${NEW_OUT_DIR}"
+
+
+PLOT_PUBLICATION_SCRIPT="${SUMMARY_DIR}/plot_publication_summary_figures.py"
+
+
+python "${PLOT_PUBLICATION_SCRIPT}" \
+    --method_performance_xlsx "${NEW_OUT_DIR}/method_performance.xlsx" \
+    --real_world_xlsx "${NEW_OUT_DIR}/combined_real_world_report/combined_real_world_report.xlsx" \
+    --replicate_report_xlsx "${NEW_OUT_DIR}/replicate_resolved_report/replicate_resolved_report.xlsx" \
+    --threshold_report_xlsx "${NEW_OUT_DIR}/threshold_calibration_report_v3/threshold_calibration_report.xlsx" \
+    --minimap_tracked_tsv "${NEW_OUT_DIR}/minimap_specific_summary/minimap_tracked_target_performance.tsv" \
+    --minimap_real_world_tsv "${NEW_OUT_DIR}/minimap_specific_summary/minimap_real_world_reference_summary.tsv" \
+    --out_dir "${NEW_OUT_DIR}/publication_summary_plots"
