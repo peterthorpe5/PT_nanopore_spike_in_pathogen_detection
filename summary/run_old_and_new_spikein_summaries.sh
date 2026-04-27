@@ -6,7 +6,7 @@
 #$ -jc long
 #$ -N summary_old_new
 
-set -euo pipefail
+# set -euo pipefail
 
 PROJECT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity"
 REPO_DIR="${PROJECT_DIR}/PT_nanopore_spike_in_pathogen_detection"
@@ -189,5 +189,10 @@ python "${SUMMARY_DIR}/summarise_relative_taxonomic_burden.py" \
     --reported_taxa_long_tsv "${NEW_OUT_DIR}/reported_taxa_long.tsv" \
     --combined_long_tsv "${NEW_OUT_DIR}/combined_long.tsv" \
     --out_dir "${NEW_OUT_DIR}/relative_taxonomic_burden"
+
+
+python "${SUMMARY_DIR}/summarise_direct_vs_clade_taxonomic_burden.py" \
+  --input_roots "${RUNS_DIR}" \
+  --out_dir "${NEW_OUT_DIR}/direct_vs_clade_taxonomic_burden"    
 
  log_info "Done"

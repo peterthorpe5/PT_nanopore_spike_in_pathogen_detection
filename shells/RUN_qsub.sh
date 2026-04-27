@@ -30,6 +30,8 @@ log_info "Configs dir: ${CONFIG_DIR}"
 
 
 # Single-genome workflows
+unset OUT_DIR
+
 submit_job "${SHELLS_DIR}/run_spikein_single_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye_medaka.sh"
