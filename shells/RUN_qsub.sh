@@ -123,7 +123,9 @@ qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
 qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_maskedref.sh"
 
 
+qsub -V "${SHELLS_DIR}/run_spikein_multi_flye_medaka2_clean.sh"
 
+qsub -V "${SHELLS_DIR}/run_spikein_single_flye_medaka2.sh"
 
 ###########
 

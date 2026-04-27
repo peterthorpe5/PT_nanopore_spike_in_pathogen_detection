@@ -182,3 +182,12 @@ python "${PLOT_PUBLICATION_SCRIPT}" \
     --minimap_tracked_tsv "${NEW_OUT_DIR}/minimap_specific_summary/minimap_tracked_target_performance.tsv" \
     --minimap_real_world_tsv "${NEW_OUT_DIR}/minimap_specific_summary/minimap_real_world_reference_summary.tsv" \
     --out_dir "${NEW_OUT_DIR}/publication_summary_plots"
+
+
+
+python "${SUMMARY_DIR}/summarise_relative_taxonomic_burden.py" \
+    --reported_taxa_long_tsv "${NEW_OUT_DIR}/reported_taxa_long.tsv" \
+    --combined_long_tsv "${NEW_OUT_DIR}/combined_long.tsv" \
+    --out_dir "${NEW_OUT_DIR}/relative_taxonomic_burden"
+
+ log_info "Done"
