@@ -24,6 +24,128 @@ REAL_FASTQ="${REAL_FASTQ:-${REAL_FASTQ_DEFAULT}}"; MONKEY_SMALL_GZ="${MONKEY_SMA
 for x in python3 read_analysis.py simulator.py flye kraken2 minimap2 samtools; do require_exe "$x"; done
 for f in "${SAMPLE_FASTQ_PY}" "${BUILD_MIXED_FASTQ_PY}" "${COMBINE_NANOSIM_FASTQ_PY}" "${SUMMARISE_KRAKEN_PY}" "${DEDUP_FASTQ_NAMES_PY}" "${ASSEMBLY_STATS_PY}" "${PATHOGEN_CONFIG_TSV}" "${REAL_FASTQ}"; do require_file "$f"; done
 require_dir "${KRAKEN_DB_DIR}"; mkdir -p "${OUT_DIR}"
+
+########################################################################
+# Job-local working directory
+########################################################################
+# The permanent output path requested by the caller is kept as FINAL_OUT_DIR.
+# Heavy temporary files are written under $TMPDIR, then selected result files
+# are copied back when the script exits. Set COPY_WORKING_FILES=true to copy
+# everything, including FASTQ, BAM, FASTA, Flye, and Medaka intermediates.
+# Set USE_TMPDIR=false to bypass this behaviour for local debugging.
+FINAL_OUT_DIR="${OUT_DIR}"
+COPY_WORKING_FILES="${COPY_WORKING_FILES:-false}"
+USE_TMPDIR="${USE_TMPDIR:-true}"
+
+copy_results_back() {
+    local exit_code="$?"
+
+    if [[ "${USE_TMPDIR}" != "true" ]]; then
+        exit "${exit_code}"
+    fi
+
+    if [[ -z "${WORK_OUT_DIR:-}" || -z "${FINAL_OUT_DIR:-}" ]]; then
+        exit "${exit_code}"
+    fi
+
+    mkdir -p "${FINAL_OUT_DIR}"
+
+    if [[ -d "${WORK_OUT_DIR}" ]]; then
+        log_info "Copying results from ${WORK_OUT_DIR} to ${FINAL_OUT_DIR}"
+
+        if [[ "${COPY_WORKING_FILES}" == "true" ]]; then
+            rsync -a "${WORK_OUT_DIR}/" "${FINAL_OUT_DIR}/" || true
+        else
+            rsync -a \
+                --include='*/' \
+                --include='*.tsv' \
+                --include='*.txt' \
+                --include='*.log' \
+                --include='*.err' \
+                --include='*.out' \
+                --include='*.json' \
+                --include='*.html' \
+                --include='*.xlsx' \
+                --include='*.pdf' \
+                --include='*.svg' \
+                --include='*.png' \
+                --include='*.report' \
+                --include='*.report.tsv' \
+                --include='*.summary.tsv' \
+                --include='*.reported_taxa.tsv' \
+                --include='*.reported_taxa_long.tsv' \
+                --include='*.meta.tsv' \
+                --include='*.target_summary.tsv' \
+                --include='*.classifications.tsv' \
+                --exclude='*.fastq' \
+                --exclude='*.fq' \
+                --exclude='*.fastq.gz' \
+                --exclude='*.fq.gz' \
+                --exclude='*.bam' \
+                --exclude='*.bai' \
+                --exclude='*.sam' \
+                --exclude='*.fasta' \
+                --exclude='*.fa' \
+                --exclude='*.fna' \
+                --exclude='flye_out/***' \
+                --exclude='medaka_out/***' \
+                --exclude='medaka_round1_out/***' \
+                --exclude='medaka_round2_out/***' \
+                --exclude='simulated_pathogen*/***' \
+                --exclude='sim_pool*' \
+                --exclude='nanosim_training*' \
+                --exclude='*' \
+                "${WORK_OUT_DIR}/" "${FINAL_OUT_DIR}/" || true
+        fi
+
+        # Rewrite result paths so downstream summary scripts see permanent paths,
+        # not job-local $TMPDIR paths that disappear after the job exits.
+        if command -v python3 >/dev/null 2>&1; then
+            python3 - "${FINAL_OUT_DIR}" "${WORK_OUT_DIR}" "${FINAL_OUT_DIR}" <<'PYTHON_REWRITE_PATHS'
+from pathlib import Path
+import sys
+
+final_dir = Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+
+for path in final_dir.rglob('*'):
+    if not path.is_file():
+        continue
+    if path.suffix not in {'.tsv', '.txt', '.log', '.json', '.html'}:
+        continue
+    try:
+        text = path.read_text(encoding='utf-8')
+    except UnicodeDecodeError:
+        continue
+    updated = text.replace(old, new)
+    if updated != text:
+        path.write_text(updated, encoding='utf-8')
+PYTHON_REWRITE_PATHS
+        fi
+    fi
+
+    exit "${exit_code}"
+}
+
+if [[ "${USE_TMPDIR}" == "true" ]]; then
+    if [[ -z "${TMPDIR:-}" || ! -d "${TMPDIR}" ]]; then
+        log_error "TMPDIR is not set or does not exist. Set USE_TMPDIR=false only for local debugging."
+        exit 1
+    fi
+
+    RUN_STAMP="$(basename "${FINAL_OUT_DIR}")"
+    WORK_OUT_DIR="${TMPDIR}/${USER:-user}_${JOB_ID:-manual}_${RUN_STAMP}"
+    mkdir -p "${WORK_OUT_DIR}"
+    mkdir -p "${FINAL_OUT_DIR}"
+    OUT_DIR="${WORK_OUT_DIR}"
+    trap copy_results_back EXIT
+
+    log_info "Permanent output directory: ${FINAL_OUT_DIR}"
+    log_info "Job-local working directory: ${WORK_OUT_DIR}"
+fi
+########################################################################
+
 mapfile -t PANEL_LINES < <(awk 'BEGIN{FS="\t"} NR>1 && NF>=2 {print $1"\t"$2}' "${PATHOGEN_CONFIG_TSV}")
 [[ ${#PANEL_LINES[@]} -gt 0 ]] || { log_error "No pathogen entries found in ${PATHOGEN_CONFIG_TSV}"; exit 1; }
 TRAIN_FASTQ="${OUT_DIR}/train_reads.fastq.gz"; NS_MODEL_PREFIX="${OUT_DIR}/nanosim_training"; SUMMARY_TSV="${OUT_DIR}/spikein_multi_flye_summary.tsv"; WORK_FASTQ="${DEPLETED_FASTQ}"

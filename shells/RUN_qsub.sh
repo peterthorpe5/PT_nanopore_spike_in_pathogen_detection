@@ -30,8 +30,6 @@ log_info "Configs dir: ${CONFIG_DIR}"
 
 
 # Single-genome workflows
-unset OUT_DIR
-
 submit_job "${SHELLS_DIR}/run_spikein_single_readlevel.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye.sh"
 submit_job "${SHELLS_DIR}/run_spikein_single_flye_medaka.sh"
@@ -99,82 +97,12 @@ export PATHOGEN_CONFIG_TSV="${CONFIG_DIR}/pathogen_panel_3.tsv"
 export OUT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_metabuli_panel3_$(date +%Y%m%d_%H%M%S)"
 submit_job "${SHELLS_DIR}/run_spikein_readlevel_metabuli.sh"
 
-##### REPEAT THOSE THAT FAILED
 
 
-qsub "${SHELLS_DIR}/rerun_minimap_shared_db_q15_len500_fixed.sh"
-
-qsub "${SHELLS_DIR}/rerun_minimap_focused_plasdb_q15_len500_fixed.sh"
-
-qsub "${SHELLS_DIR}/rerun_single_genome_flye_assembly.sh"
-
-qsub "${SHELLS_DIR}/rerun_single_genome_flye_medaka_assembly.sh"
-
-qsub "${SHELLS_DIR}/rerun_shuffled_single_genome_flye_assembly.sh"
-
-qsub "${SHELLS_DIR}/rerun_shuffled_single_genome_flye_medaka_assembly.sh"
-
-
-
-qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_fullref.sh"
-
-qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_maskedref.sh"
-
-qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
-
-qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_maskedref.sh"
-
-
-qsub -V "${SHELLS_DIR}/run_spikein_multi_flye_medaka2_clean.sh"
-
-qsub -V "${SHELLS_DIR}/run_spikein_single_flye_medaka2.sh"
-
-###########
-
-export PROJECT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity"
-export REPO_DIR="${PROJECT_DIR}/PT_nanopore_spike_in_pathogen_detection"
-export SHELLS_DIR="${REPO_DIR}/shells"
-
-export MIN_MAPQ="30"
-export MIN_ALIGN_LEN="700"
-
-export OUT_DIR="${PROJECT_DIR}/runs/spikein_single_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
-qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_fullref.sh"
-
-export OUT_DIR="${PROJECT_DIR}/runs/spikein_single_minimap_maskedref_q30_len700_$(date +%Y%m%d_%H%M%S)"
-qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_maskedref.sh"
-
-export OUT_DIR="${PROJECT_DIR}/runs/spikein_multi_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
-qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
-
-export OUT_DIR="${PROJECT_DIR}/runs/spikein_multi_minimap_maskedref_q30_len700_$(date +%Y%m%d_%H%M%S)"
-qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_maskedref.sh"
-
-
-export PROJECT_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity"
-export REPO_DIR="${PROJECT_DIR}/PT_nanopore_spike_in_pathogen_detection"
-export SHELLS_DIR="${REPO_DIR}/shells"
-
-export MIN_MAPQ="30"
-export MIN_READ_LEN="700"
-export MIN_ALIGN_LEN="700"
-
-export OUT_DIR="${PROJECT_DIR}/runs/spikein_single_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
-qsub -V "${SHELLS_DIR}/run_spikein_single_minimap_fullref.sh"
-
-export OUT_DIR="${PROJECT_DIR}/runs/spikein_multi_minimap_fullref_q30_len700_$(date +%Y%m%d_%H%M%S)"
-qsub -V "${SHELLS_DIR}/run_spikein_multi_minimap_fullref.sh"
-
-
-
-
-
-
-
-
-#########################################################################
+################################
 #   THESE DONT WROK, DONT RUN
-###################################################################################
+
+####################
 # Metamaps workflows
 
 conda activate metamaps
