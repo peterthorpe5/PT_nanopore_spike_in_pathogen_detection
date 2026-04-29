@@ -9,6 +9,9 @@
 #$ -N KSspike_multi
 
 set -euo pipefail
+export KMERSUTRA_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/kmersutra"
+export PYTHONPATH="${KMERSUTRA_DIR}:${PYTHONPATH:-}"
+
 
 log_info() { printf '[INFO] %s\n' "$*"; }
 log_error() { printf '[ERROR] %s\n' "$*" >&2; }
