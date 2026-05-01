@@ -119,13 +119,40 @@ run_kmersutra_screen() {
     fi
 }
 
-if [[ -n "${REPO_DIR:-}" ]]; then
-    REPO_DIR="${REPO_DIR}"
-elif [[ -n "${SGE_O_WORKDIR:-}" ]]; then
-    REPO_DIR="${SGE_O_WORKDIR}"
-else
-    REPO_DIR="/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection"
-fi
+resolve_repo_dir() {
+    local candidate
+    local -a candidates=()
+
+    if [[ -n "${REPO_DIR:-}" ]]; then
+        candidates+=("${REPO_DIR}")
+    fi
+
+    if [[ -n "${SGE_O_WORKDIR:-}" ]]; then
+        candidates+=("${SGE_O_WORKDIR}/PT_nanopore_spike_in_pathogen_detection")
+        candidates+=("${SGE_O_WORKDIR}")
+    fi
+
+    candidates+=("${PWD}/PT_nanopore_spike_in_pathogen_detection")
+    candidates+=("${PWD}")
+    candidates+=("/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection")
+    candidates+=("/cluster/gjb_lab/pthorpe001/2026_plasmodium_kraken_sensitivity/PT_nanopore_spike_in_pathogen_detection")
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "${candidate}/configs/pipeline_paths.sh" ]]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+
+    log_error "Could not resolve REPO_DIR. Looked for configs/pipeline_paths.sh in:"
+    for candidate in "${candidates[@]}"; do
+        log_error "  ${candidate}"
+    done
+    return 1
+}
+
+REPO_DIR="$(resolve_repo_dir)"
+log_info "Resolved repository directory: ${REPO_DIR}"
 
 source "${REPO_DIR}/configs/pipeline_paths.sh"
 
