@@ -487,9 +487,9 @@ for rep in $(seq 1 "${REPLICATES}"); do
             target_label="$(printf '%s' "${line}" | cut -f2)"
 
             call_value="$(get_tsv_value "${calls_tsv}" species_name "${target_label}" call)"
-            unique_kmers="$(get_tsv_value "${evidence_tsv}" species_name "${target_label}" n_unique_diagnostic_kmers)"
-            positive_reads="$(get_tsv_value "${evidence_tsv}" species_name "${target_label}" n_positive_reads)"
-            confidence="$(get_tsv_value "${evidence_tsv}" species_name "${target_label}" confidence_score)"
+            unique_kmers="$(get_tsv_value "${calls_tsv}" species_name "${target_label}" n_unique_kmers)"
+            positive_reads="$(get_tsv_value "${calls_tsv}" species_name "${target_label}" n_positive_sequences)"
+            confidence="$(get_tsv_value "${calls_tsv}" species_name "${target_label}" confidence_score)"
 
             row+="\t${call_value:-NA}\t${unique_kmers:-0}\t${positive_reads:-0}\t${confidence:-0}"
         done
@@ -498,5 +498,15 @@ for rep in $(seq 1 "${REPLICATES}"); do
         log_info "Finished rep=${rep} spike_n=${spike_n} KmerSutra runtime=${ks_runtime_seconds}s"
     done
 done
+
+RUN_SUMMARY_XLSX="${OUT_DIR}/kmersutra_spikein_summary.xlsx"
+RUN_SUMMARY_HTML="${OUT_DIR}/kmersutra_spikein_summary.html"
+
+if command -v kmersutra-summarise-run >/dev/null 2>&1; then
+    log_info "Writing KmerSutra run-level Excel and HTML summaries"
+    kmersutra-summarise-run         --summary_tsv "${SUMMARY_TSV}"         --out_xlsx "${RUN_SUMMARY_XLSX}"         --out_html "${RUN_SUMMARY_HTML}"         --verbose
+else
+    log_warn "kmersutra-summarise-run is not on PATH; skipping run-level Excel/HTML summaries"
+fi
 
 log_info "Done: ${SUMMARY_TSV}"
