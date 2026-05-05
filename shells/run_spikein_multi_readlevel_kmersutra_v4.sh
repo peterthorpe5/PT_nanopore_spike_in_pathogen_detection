@@ -2,7 +2,7 @@
 #$ -j y
 #$ -cwd
 #$ -V
-#$ -pe smp 12
+#$ -pe smp 24
 #$ -jc long
 #$ -mods l_hard mfree 240G
 #$ -adds l_hard h_vmem 240G
@@ -171,7 +171,7 @@ DEPLETION_REF_FASTA="${DEPLETION_REF_FASTA:-${DEPLETION_REF_FASTA_DEFAULT}}"
 DEPLETED_FASTQ="${DEPLETED_FASTQ:-${DEPLETED_FASTQ_DEFAULT}}"
 
 OUT_DIR="${OUT_DIR:-/home/pthorpe001/data/2026_plasmodium_kraken_sensitivity/runs/spikein_multi_kmersutra_panel3_$(date +%Y%m%d_%H%M%S)}"
-THREADS="${THREADS:-12}"
+THREADS="${THREADS:-24}"
 TRAIN_READS_N="${TRAIN_READS_N:-200000}"
 SIM_POOL_N="${SIM_POOL_N:-20000}"
 SPIKE_LEVELS="${SPIKE_LEVELS:-0 1 5 10 25 50 100 250 500 1000 2500 5000}"
@@ -220,56 +220,33 @@ fi
 FINAL_OUT_DIR="${OUT_DIR}"
 COPY_WORKING_FILES="${COPY_WORKING_FILES:-false}"
 USE_TMPDIR="${USE_TMPDIR:-true}"
+INCREMENTAL_SYNC="${INCREMENTAL_SYNC:-true}"
+SYNC_EVERY_N_SAMPLES="${SYNC_EVERY_N_SAMPLES:-1}"
 
-copy_results_back() {
-    local exit_code="$?"
-
+sync_results_back() {
     if [[ "${USE_TMPDIR}" != "true" ]]; then
-        exit "${exit_code}"
+        return 0
     fi
 
     if [[ -z "${WORK_OUT_DIR:-}" || -z "${FINAL_OUT_DIR:-}" ]]; then
-        exit "${exit_code}"
+        return 0
+    fi
+
+    if [[ ! -d "${WORK_OUT_DIR}" ]]; then
+        return 0
     fi
 
     mkdir -p "${FINAL_OUT_DIR}"
 
-    if [[ -d "${WORK_OUT_DIR}" ]]; then
-        log_info "Copying results from ${WORK_OUT_DIR} to ${FINAL_OUT_DIR}"
+    log_info "Synchronising selected results from ${WORK_OUT_DIR} to ${FINAL_OUT_DIR}"
 
-        if [[ "${COPY_WORKING_FILES}" == "true" ]]; then
-            rsync -a "${WORK_OUT_DIR}/" "${FINAL_OUT_DIR}/" || true
-        else
-            rsync -a \
-                --include='*/' \
-                --include='*.tsv' \
-                --include='*.tsv.gz' \
-                --include='*.txt' \
-                --include='*.log' \
-                --include='*.json' \
-                --include='*.html' \
-                --include='*.xlsx' \
-                --include='*.pdf' \
-                --include='*.svg' \
-                --include='*.png' \
-                --exclude='*.fastq' \
-                --exclude='*.fq' \
-                --exclude='*.fastq.gz' \
-                --exclude='*.fq.gz' \
-                --exclude='*.bam' \
-                --exclude='*.bai' \
-                --exclude='*.sam' \
-                --exclude='*.fasta' \
-                --exclude='*.fa' \
-                --exclude='*.fna' \
-                --exclude='simulated_pathogen*/***' \
-                --exclude='sim_pool*' \
-                --exclude='nanosim_training*' \
-                --exclude='*' \
-                "${WORK_OUT_DIR}/" "${FINAL_OUT_DIR}/" || true
-        fi
+    if [[ "${COPY_WORKING_FILES}" == "true" ]]; then
+        rsync -a "${WORK_OUT_DIR}/" "${FINAL_OUT_DIR}/" || true
+    else
+        rsync -a             --include='*/'             --include='*.tsv'             --include='*.tsv.gz'             --include='*.txt'             --include='*.log'             --include='*.json'             --include='*.html'             --include='*.xlsx'             --include='*.pdf'             --include='*.svg'             --include='*.png'             --exclude='*.fastq'             --exclude='*.fq'             --exclude='*.fastq.gz'             --exclude='*.fq.gz'             --exclude='*.bam'             --exclude='*.bai'             --exclude='*.sam'             --exclude='*.fasta'             --exclude='*.fa'             --exclude='*.fna'             --exclude='simulated_pathogen*/***'             --exclude='sim_pool*'             --exclude='nanosim_training*'             --exclude='*'             "${WORK_OUT_DIR}/" "${FINAL_OUT_DIR}/" || true
+    fi
 
-        python3 - "${FINAL_OUT_DIR}" "${WORK_OUT_DIR}" "${FINAL_OUT_DIR}" <<'PYTHON_REWRITE_PATHS'
+    python3 - "${FINAL_OUT_DIR}" "${WORK_OUT_DIR}" "${FINAL_OUT_DIR}" <<'PYTHON_REWRITE_PATHS'
 from pathlib import Path
 import sys
 
@@ -290,9 +267,20 @@ for path in final_dir.rglob("*"):
     if updated != text:
         path.write_text(updated, encoding="utf-8")
 PYTHON_REWRITE_PATHS
-    fi
+}
+
+copy_results_back() {
+    local exit_code="$?"
+
+    sync_results_back || true
 
     exit "${exit_code}"
+}
+
+handle_termination() {
+    log_error "Received termination signal. Attempting final result synchronisation before exiting."
+    sync_results_back || true
+    exit 143
 }
 
 if [[ "${USE_TMPDIR}" == "true" ]]; then
@@ -307,9 +295,11 @@ if [[ "${USE_TMPDIR}" == "true" ]]; then
     mkdir -p "${FINAL_OUT_DIR}"
     OUT_DIR="${WORK_OUT_DIR}"
     trap copy_results_back EXIT
+    trap handle_termination TERM INT
 
     log_info "Permanent output directory: ${FINAL_OUT_DIR}"
     log_info "Job-local working directory: ${WORK_OUT_DIR}"
+    log_info "Incremental sync: ${INCREMENTAL_SYNC}; every ${SYNC_EVERY_N_SAMPLES} completed sample(s)"
 fi
 
 ########################################################################
@@ -343,7 +333,13 @@ WORK_FASTQ="${DEPLETED_FASTQ}"
     printf 'threads\t%s\n' "${THREADS}"
     printf 'replicates\t%s\n' "${REPLICATES}"
     printf 'spike_levels\t%s\n' "${SPIKE_LEVELS}"
+    printf 'incremental_sync\t%s\n' "${INCREMENTAL_SYNC}"
+    printf 'sync_every_n_samples\t%s\n' "${SYNC_EVERY_N_SAMPLES}"
 } > "${RUN_META_TSV}"
+
+if [[ "${INCREMENTAL_SYNC}" == "true" ]]; then
+    sync_results_back || true
+fi
 
 log_info "KmerSutra screen command: ${KMERSUTRA_SCREEN_CMD}"
 log_info "KmerSutra threads: ${KMERSUTRA_THREADS}"
@@ -416,6 +412,12 @@ for line in "${PANEL_LINES[@]}"; do
     header+="\tkmersutra_${safe_label}_confidence"
 done
 printf '%b\n' "${header}" > "${SUMMARY_TSV}"
+
+completed_samples=0
+
+if [[ "${INCREMENTAL_SYNC}" == "true" ]]; then
+    sync_results_back || true
+fi
 
 for rep in $(seq 1 "${REPLICATES}"); do
     for spike_n in ${SPIKE_LEVELS}; do
@@ -496,6 +498,14 @@ for rep in $(seq 1 "${REPLICATES}"); do
 
         printf '%b\n' "${row}" >> "${SUMMARY_TSV}"
         log_info "Finished rep=${rep} spike_n=${spike_n} KmerSutra runtime=${ks_runtime_seconds}s"
+
+        completed_samples=$((completed_samples + 1))
+        if [[ "${INCREMENTAL_SYNC}" == "true" ]]; then
+            if (( completed_samples % SYNC_EVERY_N_SAMPLES == 0 )); then
+                log_info "Incremental sync after completed sample ${completed_samples} (rep=${rep}, spike_n=${spike_n})"
+                sync_results_back || true
+            fi
+        fi
     done
 done
 
